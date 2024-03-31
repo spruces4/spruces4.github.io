@@ -4,7 +4,7 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Sun, 31 Mar 2024 01:07:58 GMT</lastBuildDate>
+        <lastBuildDate>Sun, 31 Mar 2024 01:18:29 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
         <item>
@@ -12,8 +12,8 @@
             <guid>20d5c160bdf84fc19cf99afb20c340dd</guid>
             <pubDate>Sat, 30 Mar 2024 13:51:36 GMT</pubDate>
             <content:encoded><![CDATA[<h1 id="hey">Hey</h1>
-<p>This is the first post.</p>
-<p>what up now</p>
+<p>This is the first post, testing everyting is ok.<br />
+<img src="/_resources/dcfea66944514cff82a8e689c4cbe653.png" /></p>
 ]]></content:encoded>
         </item>
     </channel>
