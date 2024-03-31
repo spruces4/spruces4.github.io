@@ -4,7 +4,7 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Sun, 31 Mar 2024 01:28:13 GMT</lastBuildDate>
+        <lastBuildDate>Sun, 31 Mar 2024 01:30:30 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
         <item>
@@ -129,6 +129,223 @@
 <p>- <em>支持Zabbix组建之间的加密通讯(server, proxy, agent, zabbix_sender 和 zabbix_get 程序)</em> 使用TLS（Transport Layer Security ）协议。</p>
 <p>To toggle highlighting press: Ctrl+Alt+H</p>
 <p>Have an improvement suggestion for this page? Select a text that could be improved and press Ctrl+Enter to send it to editors.</p>
+]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[00 Zabbix 入门目录]]></title>
+            <guid>60081ba4970d4154a38dc3064dcc25d0</guid>
+            <pubDate>Tue, 16 Jan 2024 03:31:31 GMT</pubDate>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#基础篇">基础篇</a><ul><li><a href="#简介">简介</a><ul><li><a href="#zabbix是什么">Zabbix是什么</a></li><li><a href="#zabbix的诞生">Zabbix的诞生</a></li><li><a href="#功能描述">功能描述</a></li><li><a href="#组件信息">组件信息</a></li><li><a href="#专业术语">专业术语</a></li></ul></li><li><a href="#基础架构">基础架构</a><ul><li><a href="#server-agent模式">server-agent模式</a></li><li><a href="#server-proxy-agent模式">server-proxy-agent模式</a></li><li><a href="#逻辑架构">逻辑架构</a></li><li><a href="#探针进程">探针进程</a></li></ul></li><li><a href="#快速安装">快速安装</a></li><li><a href="#快速入门">快速入门</a><ul><li><a href="#配置文件">配置文件</a></li><li><a href="#主要配置文件及配置项目">主要配置文件及配置项目</a></li><li><a href="#新增操作">新增操作</a></li><li><a href="#agent监控方式">agent监控方式</a></li></ul></li></ul></li></ul></nav><h2 id="基础篇">基础篇</h2>
+<hr />
+<h3 id="简介">简介</h3>
+<h4 id="zabbix是什么">Zabbix是什么</h4>
+<blockquote>
+<p>企业级的分布式开源解决方案。<br />
+The all-in-one, open-source solution that lets you monitor anything.<br />
+Monitor anything: <code>Network monitor</code>, <code>Server monitor</code>, <code>Cloud monitor</code>, <code>Application monitor</code>, <code>Service monitor</code><br />
+monitor anything</p>
+</blockquote>
+<h4 id="zabbix的诞生">Zabbix的诞生</h4>
+<blockquote>
+<p>由<code>Alexei Vladishev</code>创建，从最初的<code>crontab</code>运行的<code>perl</code>脚本重构，历经4年迭代出第一个版本。<br />
+首个版本发布于<code>2001</code>年。<br />
+由<code>zabbix SIA</code>公司开发、更新、维护、培训、认证。<br />
+遵循 <code>GNU GPL v2</code>，完全免费公开，用户可以任意下载</p>
+</blockquote>
+<h4 id="功能描述">功能描述</h4>
+<blockquote>
+<p><img src="/_resources/71f7b30986474b5899841f5b0168cb41.png" /></p>
+<ol>
+<li>Metric Collection: 数据采集来源丰富、采集方式灵活、部署方式多样</li>
+<li>Probelm Detection: 基于采集数据进行趋势分析</li>
+<li>Alerting: 告警传递多样、高级消息定制、告警自动修复</li>
+<li>Data Visualization: 数据可视化、图形绘制、地理/基础设施拓扑图</li>
+<li>Single Pane of Glass: 仪表盘组件化、支持多用户</li>
+<li>Business Monitoring: 根本原因分析、告警链条、SLA监控</li>
+<li>Integrations: 供应商支持、K8S集成、云集成、虚拟服务集成、API集成</li>
+<li>Security: 加密、用户角色、身份验证、保密仓库、配置更新跟踪</li>
+<li>Deployment: 本地、云上、自动化等部署</li>
+<li>Scalability: 分布式监控、扩展基础架构、高可以解决方案</li>
+</ol>
+</blockquote>
+<h4 id="组件信息">组件信息</h4>
+<blockquote>
+<p><a>zabbix 组件介绍</a></p>
+</blockquote>
+<h4 id="专业术语">专业术语</h4>
+<blockquote>
+<p><a href="/article/zabbix">zabbix 专业术语</a></p>
+</blockquote>
+<h3 id="基础架构">基础架构</h3>
+<h4 id="server-agent模式">server-agent模式</h4>
+<p>这个是最简单的架构了，常用于监控主机比较少的情况下。<br />
+<code>agent默认模式为被动式</code></p>
+<p><a href="https://cloud.tencent.com/developer/article/1782273">官方博文|Zabbix Agent: 主动模式 VS 被动模式-腾讯云开发者社区-腾讯云</a></p>
+<blockquote>
+<ul>
+<li>Zabbix Agent（主动）<br />
+<a href="https://www.yunweiriji.com/static/monitor/zabbix/242.html">Zabbix Agent主动模式配置-1</a>
+<ul>
+<li><img src="/_resources/5762a741bdac46a9bea39a7e7fa9d93f.png" /></li>
+<li>主动模式下，所有数据处理轮询都在Agent上执行，不受pollers的干扰。但是，Agent又需要知道应该监视哪些指标，所以Agent每两分钟(默认情况下)连接一次Zabbix Server的主动（trapper）端口10051/TCP。Agent请求有关项的信息，然后在Agent主机上执行监控程序，并通过相同的10051/TCP端口将数据推送到Zabbix Server。</li>
+<li>Zabbix-Agent主动连接Zabbix-Server，对Zabbix-Server的性能开销较少，适合大规模，不需要远程命令执行的环境使用。</li>
+</ul>
+</li>
+<li>Zabbix Agent（被动）<br />
+<a href="https://www.yunweiriji.com/static/monitor/zabbix/248.html">Zabbix Agent被动模式配置-2</a>
+<ul>
+<li><img src="/_resources/bce6e22a8e9f457791a580c0e273a62a.png" /></li>
+<li>被动模式下使用Zabbix Agent，这意味着轮询器(内部Zabbix Serve进程)连接到端口10050/TCP上的代理并轮询某个值(例如，主机CPU负载)。轮询器等待，直到主机上的代理使用该值进行响应。最后Zabbix Server获得该值，接着连接关闭。</li>
+<li>Zabbix-Agent被动接受数据请求后回应，属于一对一的响应模式，适合规模较小的，不需要日志监控的环境。</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<h4 id="server-proxy-agent模式">server-proxy-agent模式</h4>
+<p>这个常用于比较多的机器，使用proxy进行分布式监控，有效的减轻server端的压力。<br />
+<a href="https://www.jianshu.com/p/c735e9bb1c66">zabbix agent的主动模式与被动模式及zabbix proxy</a></p>
+<h4 id="逻辑架构">逻辑架构</h4>
+<p><img src="/_resources/3fd012a0f06d4e4f96305133b0e71570.png" /></p>
+<ul>
+<li>定义一个<code>template</code>模板，里面包括多个<code>items</code>，<code>trigger</code>，<code>graphs</code>套用给<code>host</code>或者<code>hostgroups</code>。</li>
+<li>server监控项目<code>items</code>通过<code>zabbix poller</code>进程（可以有多个进程实现并发处理）包括snmp，agent协议收集被监控主机信息。</li>
+<li>如果阈值超过<code>triggers</code>触发器规定，就是形成一个<code>events</code>事件，然后<code>actions</code>处理动作（包括运行预先定制的脚本，不成功发送<code>email</code>或<code>SMS</code>）。</li>
+<li>在服务器升级的时候提前设定<code>maintenance</code>维护模式不对服务器产生告警通知。</li>
+</ul>
+<h4 id="探针进程">探针进程</h4>
+<p><img src="/_resources/48e5da541c624223923d941ddc497e5c.png" /></p>
+<h3 id="快速安装">快速安装</h3>
+<p><a href="https://cloud.tencent.com/developer/article/1943154">Centos7系统安装Zabbix 5.0LTS版本教程</a></p>
+<blockquote>
+<p>通过包管理工具进行安装</p>
+</blockquote>
+<p><a href="https://cloud.tencent.com/developer/article/2206022">基于docker快速搭建zabbix 6.2监控平台</a></p>
+<blockquote>
+<p>通过容器部署</p>
+</blockquote>
+<p><a href="https://www.cnblogs.com/A121/p/17466883.html">zabbix--5.0.2 综合监控平台部署</a></p>
+<blockquote></blockquote>
+<table>
+<thead>
+<tr>
+<th>软件</th>
+<th>版本</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>zabbix-server-mysql</td>
+<td>5.0.2</td>
+<td>宿主机部署</td>
+</tr>
+<tr>
+<td>zabbix-agent</td>
+<td>5.0.2</td>
+<td>宿主机部署</td>
+</tr>
+<tr>
+<td>zabbix-web-nginx-mysql</td>
+<td>5.0.2</td>
+<td>docker方式部署</td>
+</tr>
+<tr>
+<td>mysql</td>
+<td>8.0.21</td>
+<td>宿主机部署</td>
+</tr>
+<tr>
+<td>grafana</td>
+<td>6.6.2</td>
+<td>宿主机部署</td>
+</tr>
+</tbody>
+</table>
+<h3 id="快速入门">快速入门</h3>
+<h4 id="配置文件">配置文件</h4>
+<ul>
+<li>配置文件</li>
+</ul>
+<div><pre class="hljs"><code><span class="hljs-comment"># 查询安装的zabbix相关的工具对应的配置文件</span>
+<span class="hljs-comment"># for p in `rpm -qa | grep -i zabbix`; do echo -e "${p}: \n" $(for pp in $(rpm -qc ${p}); do echo "${pp}\n"; done); done</span>
+zabbix-server-mysql-4.0.50-1.el8.x86_64: 
+ <span class="hljs-comment"># 这是 Zabbix 服务器日志轮转配置文件。它定义了在何时和如何轮转 Zabbix 服务器的日志文件，以便控制日志文件的大小和保持系统的性能稳定。</span>
+ /etc/logrotate.d/zabbix-server 
+ <span class="hljs-comment"># 这是 Zabbix 服务器的主要配置文件。它包含了 Zabbix 服务器的各种设置，如数据库连接信息、网络参数、日志设置、监控项和触发器的配置等。</span>
+ /etc/zabbix/zabbix_server.conf
+
+zabbix-agent-4.0.50-1.el8.x86_64: 
+ <span class="hljs-comment"># 这是 Zabbix Agent 日志轮转配置文件;定义了 Zabbix Agent 日志文件的轮转方式。</span>
+ /etc/logrotate.d/zabbix-agent
+ <span class="hljs-comment"># Zabbix Agent 的主要配置文件。它包含了 Zabbix Agent 的配置选项，如服务器地址、监听端口、日志设置等。</span>
+ /etc/zabbix/zabbix_agentd.conf
+ <span class="hljs-comment"># 附加的配置文件，用于定义 Zabbix Agent 监控 MySQL 数据库的自定义参数。</span>
+ <span class="hljs-comment"># 在该文件中，您可以添加自定义的监控项和键值对，以便通过 Zabbix Agent 监控 MySQL 数据库的性能指标和状态。</span>
+ /etc/zabbix/zabbix_agentd.d/userparameter_mysql.conf
+
+zabbix-web-4.0.50-1.el8.noarch: 
+ <span class="hljs-comment"># 这是 Apache HTTP Server 的配置文件片段，用于配置 Zabbix Web 界面的访问权限和其他相关设置。</span>
+ /etc/httpd/conf.d/zabbix.conf
+ <span class="hljs-comment"># 这是 PHP-FPM（FastCGI 进程管理器）的配置文件片段，用于配置 PHP 运行环境以支持 Zabbix Web 界面。</span>
+ /etc/php-fpm.d/zabbix.conf
+ <span class="hljs-comment"># 这是一个维护模式页面的 PHP 文件，当 Zabbix Web 界面处于维护状态时，会显示该页面。</span>
+ /etc/zabbix/web/maintenance.inc.php
+ <span class="hljs-comment"># 这是 Zabbix Web 界面的主要配置文件。它包含了与数据库连接、身份验证、会话设置、日志设置等相关的配置选项。</span>
+ /etc/zabbix/web/zabbix.conf.php
+ 
+zabbix-web-mysql-4.0.50-1.el8.noarch: 
+ (contains no files)
+
+zabbix-get-4.0.50-1.el8.x86_64: 
+(nil)
+
+zabbix-sender-4.0.50-1.el8.x86_64: 
+(nil)
+
+zabbix-release-4.0-2.el8.noarch: 
+(nil)</code></pre></div>
+<h4 id="主要配置文件及配置项目">主要配置文件及配置项目</h4>
+<table>
+<thead>
+<tr>
+<th>zabbix_server</th>
+<th>zabbix_agent</th>
+<th>zabbix_proxy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a>参数详解</a></td>
+<td><a>参数详解</a></td>
+<td><a>参数详解</a></td>
+</tr>
+</tbody>
+</table>
+<h4 id="新增操作">新增操作</h4>
+<table>
+<thead>
+<tr>
+<th>登录和配置用户</th>
+<th>新建主机</th>
+<th>新建监控项</th>
+<th>新建触发项</th>
+<th>接受问题通知</th>
+<th>新建模板</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://www.zabbix.com/documentation/6.0/zh/manual/quickstart/login">zabbix-快速入门-1 </a></td>
+<td><a href="https://www.zabbix.com/documentation/6.0/zh/manual/quickstart/host">zabbix-快速入门-2 </a></td>
+<td><a href="https://www.zabbix.com/documentation/6.0/zh/manual/quickstart/item">zabbix-快速入门-3 </a></td>
+<td><a href="https://www.zabbix.com/documentation/6.0/zh/manual/quickstart/trigger">zabbix-快速入门-4 </a></td>
+<td><a href="https://www.zabbix.com/documentation/6.0/zh/manual/quickstart/notification">zabbix-快速入门-5 </a></td>
+<td><a href="https://www.zabbix.com/documentation/6.0/zh/manual/quickstart/template">zabbix-快速入门-6 </a></td>
+</tr>
+</tbody>
+</table>
+<h4 id="agent监控方式">agent监控方式</h4>
+<p><a>Zabbix agent 监控方式</a></p>
 ]]></content:encoded>
         </item>
     </channel>
