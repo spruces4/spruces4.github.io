@@ -1,17 +1,38 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
-    <channel>
-        <title></title>
-        <link>undefined</link>
-        <description>undefined</description>
-        <lastBuildDate>Tue, 02 Apr 2024 11:18:03 GMT</lastBuildDate>
-        <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
-        <generator>Joplin Pages Publisher</generator>
-        <item>
-            <title><![CDATA[第一周作业]]></title>
-            <guid>1bce478c5dc64adbb0030681a1d8ab08</guid>
-            <pubDate>Tue, 02 Apr 2024 03:19:23 GMT</pubDate>
-            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#在虚拟机安装tomcat并部署服务并且实现会话共享">在虚拟机安装tomcat并部署服务，并且实现会话共享</a><ul><li><a href="#tomcat安装">tomcat安装</a><ul><li><a href="#包安装">包安装</a></li></ul></li><li><a href="#部署一个简单应用">部署一个简单应用</a></li><li><a href="#会话共享">会话共享</a><ul><li><a href="#session-绑定">session 绑定</a></li><li><a href="#session-复制">session 复制</a></li><li><a href="#session-server">session Server</a><ul><li><a href="#msm-解决方案">MSM 解决方案</a></li></ul></li></ul></li></ul></li><li><a href="#总结jvm内存结构和垃圾回收算法">总结JVM内存结构和垃圾回收算法</a><ul><li><a href="#jvm-内存管理">JVM 内存管理</a><ul><li><a href="#线程私有的内存区域">线程私有的内存区域</a><ul><li><a href="#程序计数器program-counter-register">程序计数器（Program Counter Register）</a></li><li><a href="#虚拟机栈vm-stack">虚拟机栈（VM Stack）</a></li><li><a href="#本地方法栈native-method-stack">本地方法栈（Native Method Stack）</a></li></ul></li><li><a href="#线程共享的内存区域">线程共享的内存区域</a><ul><li><a href="#堆heap">堆（Heap）</a></li><li><a href="#方法区method-area">方法区（Method Area）</a></li></ul></li></ul></li><li><a href="#垃圾回收机制">垃圾回收机制</a><ul><li><a href="#垃圾判断-what">垃圾判断 (what)</a></li><li><a href="#回收方式-how">回收方式 (how)</a><ul><li><a href="#复制算法coping">复制算法（Coping）</a></li></ul></li><li><a href="#标记清除算法mark-sweep">标记清除算法（Mark-Sweep）</a><ul><li><a href="#标记整理算法mark-compact">标记整理算法（Mark-Compact）</a></li><li><a href="#小结">小结</a></li></ul></li><li><a href="#回收思想-why">回收思想 (why)</a></li><li><a href="#垃圾收集器-which">垃圾收集器 (which)</a><ul><li><a href="#分类">分类</a></li><li><a href="#新生代">新生代</a></li><li><a href="#老年代">老年代</a></li><li><a href="#g1收集器">G1收集器</a></li></ul></li><li><a href="#总结表格">总结表格</a></li><li><a href="#回收时间-when">回收时间 (when)</a></li><li><a href="#收集策略-policy">收集策略 (policy)</a></li><li><a href="#yong-gc-minor-gc-的触发">Yong GC / Minor GC 的触发</a><ul><li><a href="#yong-gc-minor-gc-过程">Yong GC / Minor GC 过程</a></li><li><a href="#old-gc-major-gc-full-gc-的触发">Old GC / Major GC / Full GC 的触发</a></li><li><a href="#old-gc-major-gc-过程">Old GC / Major GC 过程</a></li><li><a href="#full-gc-过程">FULL GC 过程</a></li><li><a href="#minor-gc-vs-major-gc">Minor GC vs Major GC</a></li><li><a href="#survivor-区对象晋升位老年代">Survivor 区对象晋升位老年代</a></li><li><a href="#比例关系">比例关系</a></li></ul></li></ul></li></ul></li><li><a href="#总结安装nexus步骤和私有仓库实现">总结安装Nexus步骤和私有仓库实现</a><ul><li><a href="#安装">安装</a></li><li><a href="#运行">运行</a><ul><li><a href="#前台运行">前台运行</a></li><li><a href="#后台运行">后台运行</a></li><li><a href="#关闭运行">关闭运行</a></li></ul></li><li><a href="#配置启动脚本">配置启动脚本</a></li><li><a href="#首次登录">首次登录</a></li><li><a href="#自建apt仓库">自建apt仓库</a></li></ul></li></ul></nav><h1 id="在虚拟机安装tomcat并部署服务并且实现会话共享">在虚拟机安装tomcat并部署服务，并且实现会话共享</h1>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<link rel="stylesheet" href="/_assets/main.css" />
+
+    <title>第一周作业 - Alfie Cheung</title>
+  <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /></head>
+  <body>
+    <div class="main">
+      <nav class="navigation">
+        <a href="/">Alfie Cheung</a>
+      </nav>
+      <article>
+        <header>
+          <h1 class="article-title">第一周作业</h1>
+          <div class="article-info">
+            <div>
+              <span
+                >Created At：<time datetime="1712027963912"
+                  >2024-04-02 11:19</time
+                ></span
+              >
+              <span
+                >Updated At：<time datetime="1712028964728"
+                  >2024-04-02 11:36</time
+                ></span
+              >
+            </div>
+            
+          </div>
+        </header>
+        <div class="article-content markdown-body"><nav class="table-of-contents"><ul><li><a href="#在虚拟机安装tomcat并部署服务并且实现会话共享">在虚拟机安装tomcat并部署服务，并且实现会话共享</a><ul><li><a href="#tomcat安装">tomcat安装</a><ul><li><a href="#包安装">包安装</a></li></ul></li><li><a href="#部署一个简单应用">部署一个简单应用</a></li><li><a href="#会话共享">会话共享</a><ul><li><a href="#session-绑定">session 绑定</a></li><li><a href="#session-复制">session 复制</a></li><li><a href="#session-server">session Server</a><ul><li><a href="#msm-解决方案">MSM 解决方案</a></li></ul></li></ul></li></ul></li><li><a href="#总结jvm内存结构和垃圾回收算法">总结JVM内存结构和垃圾回收算法</a><ul><li><a href="#jvm-内存管理">JVM 内存管理</a><ul><li><a href="#线程私有的内存区域">线程私有的内存区域</a><ul><li><a href="#程序计数器program-counter-register">程序计数器（Program Counter Register）</a></li><li><a href="#虚拟机栈vm-stack">虚拟机栈（VM Stack）</a></li><li><a href="#本地方法栈native-method-stack">本地方法栈（Native Method Stack）</a></li></ul></li><li><a href="#线程共享的内存区域">线程共享的内存区域</a><ul><li><a href="#堆heap">堆（Heap）</a></li><li><a href="#方法区method-area">方法区（Method Area）</a></li></ul></li></ul></li><li><a href="#垃圾回收机制">垃圾回收机制</a><ul><li><a href="#垃圾判断-what">垃圾判断 (what)</a></li><li><a href="#回收方式-how">回收方式 (how)</a><ul><li><a href="#复制算法coping">复制算法（Coping）</a></li></ul></li><li><a href="#标记清除算法mark-sweep">标记清除算法（Mark-Sweep）</a><ul><li><a href="#标记整理算法mark-compact">标记整理算法（Mark-Compact）</a></li><li><a href="#小结">小结</a></li></ul></li><li><a href="#回收思想-why">回收思想 (why)</a></li><li><a href="#垃圾收集器-which">垃圾收集器 (which)</a><ul><li><a href="#分类">分类</a></li><li><a href="#新生代">新生代</a></li><li><a href="#老年代">老年代</a></li><li><a href="#g1收集器">G1收集器</a></li></ul></li><li><a href="#总结表格">总结表格</a></li><li><a href="#回收时间-when">回收时间 (when)</a></li><li><a href="#收集策略-policy">收集策略 (policy)</a></li><li><a href="#yong-gc-minor-gc-的触发">Yong GC / Minor GC 的触发</a><ul><li><a href="#yong-gc-minor-gc-过程">Yong GC / Minor GC 过程</a></li><li><a href="#old-gc-major-gc-full-gc-的触发">Old GC / Major GC / Full GC 的触发</a></li><li><a href="#old-gc-major-gc-过程">Old GC / Major GC 过程</a></li><li><a href="#full-gc-过程">FULL GC 过程</a></li><li><a href="#minor-gc-vs-major-gc">Minor GC vs Major GC</a></li><li><a href="#survivor-区对象晋升位老年代">Survivor 区对象晋升位老年代</a></li><li><a href="#比例关系">比例关系</a></li></ul></li></ul></li></ul></li><li><a href="#总结安装nexus步骤和私有仓库实现">总结安装Nexus步骤和私有仓库实现</a><ul><li><a href="#安装">安装</a></li><li><a href="#运行">运行</a><ul><li><a href="#前台运行">前台运行</a></li><li><a href="#后台运行">后台运行</a></li><li><a href="#关闭运行">关闭运行</a></li></ul></li><li><a href="#配置启动脚本">配置启动脚本</a></li><li><a href="#首次登录">首次登录</a></li><li><a href="#自建apt仓库">自建apt仓库</a></li></ul></li></ul></nav><h1 id="在虚拟机安装tomcat并部署服务并且实现会话共享">在虚拟机安装tomcat并部署服务，并且实现会话共享</h1>
 <h2 id="tomcat安装">tomcat安装</h2>
 <h3 id="包安装">包安装</h3>
 <div><pre class="hljs"><code><span class="hljs-comment"># CentOS / Rocky</span>
@@ -792,60 +813,8 @@ WantedBy=multi-user.target</code></pre></div>
 
 deb http://192.168.100.121:8081/repository/ubuntu-proxy/ focal main restricted universe multiverse</code></pre></div>
 <p><img src="/_resources/795ed58d2e994c278c83138503f49999.png" /></p>
-]]></content:encoded>
-        </item>
-        <item>
-            <title><![CDATA[Hello world]]></title>
-            <guid>20d5c160bdf84fc19cf99afb20c340dd</guid>
-            <pubDate>Sat, 30 Mar 2024 13:51:36 GMT</pubDate>
-            <content:encoded><![CDATA[<h1 id="hey">Hey</h1>
-<p>This is the first post, testing everyting is ok.<br />
-<img src="/_resources/dcfea66944514cff82a8e689c4cbe653.png" /></p>
-]]></content:encoded>
-        </item>
-        <item>
-            <title><![CDATA[Byte Byte Go 图]]></title>
-            <guid>9ad6880a0e8c46039ae7c1a4c7adec23</guid>
-            <pubDate>Sun, 21 Jan 2024 10:08:29 GMT</pubDate>
-            <content:encoded><![CDATA[<h1 id="k8s-service-type">K8S service type</h1>
-<p><img src="/_resources/ddb262f46b8840d28c216313e7b86daa.png" /></p>
-<h1 id="rest-api-design">REST API Design</h1>
-<p><img src="/_resources/ca5468c9a25d4ce68bc3f648dd55520f.jpeg" /></p>
-<h1 id="top-6-log-parsing-commands">Top 6 log parsing commands</h1>
-<p><img src="/_resources/e3e450a0738244f28d356846a0e9d94f.png" /></p>
-<h1 id="8-popular-network-protocol">8 popular network protocol</h1>
-<p><img src="/_resources/05ed2d25ba8c454fa2227bd553892c66.png" /></p>
-<h1 id="sql-execution">SQL execution</h1>
-<p><img src="/_resources/f8ee64388c7546b5a2c9afa31e140c3f.png" /></p>
-<h1 id="jwt">JWT</h1>
-<p><img src="/_resources/558c699e875a4ea8ad78d46df00a305d.png" /></p>
-<h1 id="data-structure-power-your-database">data structure power your database</h1>
-<p><img src="/_resources/9368ba6228594d29869970cf261b2721.png" /></p>
-<h1 id="http-methods">HTTP methods</h1>
-<p><img src="/_resources/2678b89f576f40f796c003cc9b976c9b.png" /></p>
-<h1 id="linux-directory">Linux directory</h1>
-<p><img src="/_resources/7e33fbe5a75f4dc08b4541f5fe7e4696.png" /></p>
-<h1 id="when-you-type-url">When you type URL</h1>
-<p><img src="/_resources/63a6fd8820a04e479980cf8e4a6d7c88.png" /></p>
-<h1 id="forward-proxy-vs-rever-proxy">forward proxy vs rever proxy</h1>
-<p><img src="/_resources/936a8886f0994dc288d25f21d0e223c8.png" /></p>
-<h1 id="how-https-work">How https work</h1>
-<p><img src="/_resources/a6401043babd4d19a5973cb7bbd822a2.png" /></p>
-<h1 id="how-does-message-queue-evolve">How does message queue evolve</h1>
-<p><img src="/_resources/a8e06fa592a3487d90904681ae5cf68e.png" /></p>
-<h1 id="linux-network-tools">Linux network tools</h1>
-<p><img src="/_resources/12143acf7a234feeab985017dad35cc7.png" /></p>
-<h1 id="linux-boot-process">Linux boot process</h1>
-<p><img src="/_resources/c3474e2c84aa48bcb91556e66623920c.png" /></p>
-<h1 id="why-k8s">Why k8s</h1>
-<p><img src="/_resources/69154c4b84a441be866266de73048132.png" /></p>
-<h1 id="top-4-type-of-queus">Top 4 type of queus</h1>
-<p><img src="/_resources/96f3ba31621c4090b170204ceaca437f.png" /></p>
-<h1 id="defence-of-security-in-linux">Defence of security in linux</h1>
-<p><img src="/_resources/bc24264ea2be4f4290a63fe69350725e.png" /></p>
-<h1 id="security-search-engine">security search engine</h1>
-<p><img src="/_resources/da03376cad4a4dfd827af7cd1eb7299a.png" /></p>
-]]></content:encoded>
-        </item>
-    </channel>
-</rss>
+</div>
+      </article>
+    </div>
+  </body>
+</html>
