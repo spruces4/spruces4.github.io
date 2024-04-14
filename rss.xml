@@ -4,14 +4,14 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Sun, 14 Apr 2024 04:15:10 GMT</lastBuildDate>
+        <lastBuildDate>Sun, 14 Apr 2024 05:07:42 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
         <item>
             <title><![CDATA[第二周作业]]></title>
             <guid>c512f8c02d02485293c57f2e4b863f51</guid>
             <pubDate>Sun, 14 Apr 2024 04:06:22 GMT</pubDate>
-            <content:encoded><![CDATA[<h1 id="各版本zabbix安装">各版本zabbix安装</h1>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#各版本zabbix安装">各版本zabbix安装</a><ul><li><a href="#安装">安装</a></li><li><a href="#rpm系包安装">rpm系包安装</a></li><li><a href="#dpkg系包安装">dpkg系包安装</a></li></ul></li><li><a href="#主动模式和被动模式比较与实现">主动模式和被动模式比较与实现</a><ul><li><a href="#被动模式默认">被动模式(默认)</a></li><li><a href="#主动模式">主动模式</a></li><li><a href="#配置">配置</a><ul><li><a href="#配置-1">配置</a></li></ul></li></ul></li><li><a href="#proxy主动被动模式案例">proxy主动被动模式案例</a><ul><li><a href="#原理">原理</a></li><li><a href="#架构">架构</a></li><li><a href="#安装proxy">安装proxy</a></li><li><a href="#工作模式">工作模式</a></li><li><a href="#主动模式-1">主动模式</a><ul><li><a href="#proxy文件">proxy文件</a></li><li><a href="#agent文件">agent文件</a></li><li><a href="#前端配置">前端配置</a></li><li><a href="#验证监控">验证监控</a></li></ul></li><li><a href="#被动模式">被动模式</a><ul><li><a href="#proxy数据库修改">proxy数据库修改</a></li><li><a href="#proxy文件-1">proxy文件</a></li><li><a href="#agent文件-1">agent文件</a></li><li><a href="#前端配置-1">前端配置</a></li><li><a href="#验证监控-1">验证监控</a></li></ul></li><li><a href="#参考">参考</a></li></ul></li><li><a href="#一键zabbix-agent脚本">一键zabbix agent脚本</a></li><li><a href="#一键zabbix-api添加zabbix-agent">一键zabbix api添加zabbix agent</a><ul><li><a href="#api_create-被动模式">api_create (被动模式)</a></li><li><a href="#api_create-主动模式">api_create (主动模式)</a></li></ul></li></ul></nav><h1 id="各版本zabbix安装">各版本zabbix安装</h1>
 <h2 id="安装">安装</h2>
 <blockquote>
 <p><a title="https://www.zabbix.com/download" href="https://www.zabbix.com/download">官方下载链接</a></p>
