@@ -4,9 +4,580 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Tue, 02 Apr 2024 11:25:11 GMT</lastBuildDate>
+        <lastBuildDate>Sun, 14 Apr 2024 04:15:10 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
+        <item>
+            <title><![CDATA[第二周作业]]></title>
+            <guid>c512f8c02d02485293c57f2e4b863f51</guid>
+            <pubDate>Sun, 14 Apr 2024 04:06:22 GMT</pubDate>
+            <content:encoded><![CDATA[<h1 id="各版本zabbix安装">各版本zabbix安装</h1>
+<h2 id="安装">安装</h2>
+<blockquote>
+<p><a title="https://www.zabbix.com/download" href="https://www.zabbix.com/download">官方下载链接</a></p>
+</blockquote>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>font-end 为 apache, 前端访问地址： <a title="http://host/zabbix" href="http://host/zabbix">http://host/zabbix</a></li>
+<li>font-end 为 nginx (zabbix 6.0 后支持), 前端访问地址 http://host_name/<br />
+!!!</li>
+</ol>
+<h2 id="rpm系包安装">rpm系包安装</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 安装6.0LTS / Rocky Linux 8 / server, fronted, agent / mysql / Apache</span>
+
+1. 关闭epel源的zabbix项
+[epel]
+...
+excludepkgs=zabbix*
+
+2. 安装zabbix仓库
+rpm -Uvh https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbix-release-6.0-4.el8.noarch.rpm
+dnf clean all
+
+3. 安装
+dnf install zabbix-server-mysql \
+zabbix-web-mysql zabbix-apache-conf \
+zabbix-sql-scripts zabbix-selinux-policy \
+zabbix-agent mysql-server mysql
+
+4. 创建数据库
+mysql -uroot -p
+&gt;  password
+&gt;  mysql&gt; create database zabbix character <span class="hljs-built_in">set</span> utf8mb4 collate utf8mb4_bin; -- 创建用户zabbix设定字符集等
+&gt;  mysql&gt; create user zabbix@localhost identified by <span class="hljs-string">'alopex'</span>; -- 修改用户zabbix的密码
+&gt;  mysql&gt; grant all privileges on zabbix.* to zabbix@localhost; -- localhost修改为对应的主机
+&gt;  mysql&gt; <span class="hljs-built_in">set</span> global log_bin_trust_function_creators = 1; -- 允许在MySQL服务器中创建并使用自定义函数
+&gt;  mysql&gt; quit;
+
+5. 导入数据库脚本
+zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -uzabbix -p zabbix
+mysql -uroot -p
+&gt;  password
+&gt;  mysql&gt; <span class="hljs-built_in">set</span> global log_bin_trust_function_creators = 0;  -- 关闭在MySQL服务器中创建并使用自定义函数
+&gt;  mysql&gt; quit;
+
+6. 修改zabbix server的DB密码
+ /etc/zabbix/zabbix_server.conf
+ DBPassword=alopex
+
+7. 设置zabbix开机启动
+systemctl restart zabbix-server zabbix-agent httpd php-fpm mysqld.service
+systemctl <span class="hljs-built_in">enable</span> zabbix-server zabbix-agent httpd php-fpm mysqld.service
+
+8. 打开zabbix UI访问界面，初始化数据库
+...</code></pre></div>
+<p><img src="/_resources/e1a831264873427984995344f79d2fb4.png" /><br />
+<img src="/_resources/56c0a7b4e10e418eb136f9c2cdf49792.png" /></p>
+<h2 id="dpkg系包安装">dpkg系包安装</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 安装6.0LTS / ubuntu 22.04 / server, fronted, agent / mysql / Nginx</span>
+
+1. 安装zabbix仓库
+wget https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-4+ubuntu22.04_all.deb
+dpkg -i zabbix-release_6.0-4+ubuntu22.04_all.deb
+apt update
+
+2. 安装
+apt install zabbix-server-mysql \
+zabbix-frontend-php zabbix-nginx-conf \
+zabbix-sql-scripts zabbix-agent \
+mysql-server mysql-client
+
+3. 创建数据库
+mysql -uroot -p
+&gt;  password
+&gt;  mysql&gt; create database zabbix character <span class="hljs-built_in">set</span> utf8mb4 collate utf8mb4_bin; -- 创建用户zabbix设定字符集等
+&gt;  mysql&gt; create user zabbix@localhost identified by <span class="hljs-string">'alopex'</span>; -- 修改用户zabbix的密码
+&gt;  mysql&gt; grant all privileges on zabbix.* to zabbix@localhost; -- localhost修改为对应的主机
+&gt;  mysql&gt; <span class="hljs-built_in">set</span> global log_bin_trust_function_creators = 1; -- 允许在MySQL服务器中创建并使用自定义函数
+&gt;  mysql&gt; quit;
+
+4. 导入数据库脚本
+zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -uzabbix -p zabbix
+mysql -uroot -p
+&gt;  password
+&gt;  mysql&gt; <span class="hljs-built_in">set</span> global log_bin_trust_function_creators = 0;  -- 关闭在MySQL服务器中创建并使用自定义函数
+&gt;  mysql&gt; quit;
+
+5. 修改zabbix server的DB密码
+ /etc/zabbix/zabbix_server.conf
+ DBPassword=alopex
+
+6. 关闭apache2
+systemctl <span class="hljs-built_in">disable</span> --now apache2
+ 
+6. 配置PHP前端 
+/etc/zabbix/nginx.conf 
+listen 8080;
+server_name my_zabbix.com;  <span class="hljs-comment"># 修改服务器名称</span>
+
+7. 追加hosts解析
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"ip.ip.ip.ip my_zabbix.com"</span>  | sudo tee -a /etc/hosts
+ 
+7. 设置zabbix开机启动
+systemctl restart zabbix-server zabbix-agent nginx php8.1-fpm mysql-service
+systemctl <span class="hljs-built_in">enable</span> zabbix-server zabbix-agent nginx php8.1-fpm mysql-service
+ 
+8. 打开zabbix UI访问界面，初始化数据库
+...</code></pre></div>
+<p><img src="/_resources/c699e7e06aeb4e87be124b34c3dcc22a.png" /><br />
+<img src="/_resources/3146565c6a6b42fba65abfc137551a3e.png" /></p>
+<h1 id="主动模式和被动模式比较与实现">主动模式和被动模式比较与实现</h1>
+<h3 id="被动模式默认">被动模式(默认)</h3>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>通信方式</td>
+<td>被动模式下,Zabbix Agent被动地等待来自Zabbix Server或Proxy的连接请求和数据收集指令。</td>
+</tr>
+<tr>
+<td>工作特点</td>
+<td>1) 定期被Zabbix Server或Proxy主动连接和查询 <br class="jop-noMdConv" /> 2) 监控本地资源和应用程序状态 <br class="jop-noMdConv" /> 3) 将收集的数据发送给Server或Proxy</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>1) 中小规模环境,无需分布式监控 <br class="jop-noMdConv" /> 2) 防火墙限制,Agent无法主动连接Server <br class="jop-noMdConv" /> 3) 监控对象数量有限</td>
+</tr>
+<tr>
+<td>系统负载</td>
+<td>相对较低,Agent处理请求的负载较小</td>
+</tr>
+<tr>
+<td>Agent监听端口</td>
+<td>10050 (TCP) - 与Zabbix Server/Proxy通信 <br class="jop-noMdConv" /> 10049 (TCP) - 与Zabbix Server通信(仅被动模式)</td>
+</tr>
+<tr>
+<td>Server/Proxy端口</td>
+<td>10051 (TCP) - Zabbix Proxy的Trapper接收主动数据 <br class="jop-noMdConv" /> 10025 (TCP) - Server与Proxy、其他组件通信 <br class="jop-noMdConv" /> 10020 (TCP/UDP) - Server的SNMP Trapper与Agent通信</td>
+</tr>
+<tr>
+<td>数据更新频率</td>
+<td>由Zabbix Server或Proxy控制,默认60秒刷新一次被动项目。可根据需求进行配置调整。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="主动模式">主动模式</h3>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>通信方式</td>
+<td>主动模式下,Zabbix Agent主动连接Zabbix Server,不需要Server端主动查询。</td>
+</tr>
+<tr>
+<td>工作特点</td>
+<td>1) 主动连接并主动将监控数据发送给Zabbix Server <br class="jop-noMdConv" /> 2) 可在防火墙后工作,只需开启出站连接 <br class="jop-noMdConv" /> 3) 支持主动发送Trapper数据给Zabbix Server</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>1) 分布式大规模环境,大量被监控对象 <br class="jop-noMdConv" /> 2) 防火墙限制,只允许主动出站连接 <br class="jop-noMdConv" /> 3) 监控对象分散在广域网络中</td>
+</tr>
+<tr>
+<td>系统负载</td>
+<td>相比被动模式,Agent端负载较高,需要主动建立连接。</td>
+</tr>
+<tr>
+<td>Agent监听端口</td>
+<td>不适用,没有监听端口。</td>
+</tr>
+<tr>
+<td>Server端口</td>
+<td>10051 (TCP) - Zabbix Server Trapper接收主动数据</td>
+</tr>
+<tr>
+<td>数据更新频率</td>
+<td>由Agent端控制,可根据配置进行主动更新,默认120秒。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="配置">配置</h2>
+<h4 id="配置-2">配置</h4>
+<p>!!! abstract 配置信息</p>
+<ul>
+<li>
+<p>被动模式 （默认模式）</p>
+<ul>
+<li>agent端文件配置  <code>/etc/zabbix/zabbix_agentd.conf</code><div><pre class="hljs"><code><span class="hljs-attr">Server</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span> <span class="hljs-comment"># 指向zabbix server</span></code></pre></div>
+</li>
+<li>重启服务
+<blockquote>
+<p>systemctl restart zabbix-agent.service</p>
+</blockquote>
+</li>
+<li>前端配置<br />
+<img src="/_resources/67849c46e3dd4d82a45a7439f5157ed5.png" /><br />
+<img src="/_resources/ed8fa3e798094f399af918df54701dda.png" /></li>
+</ul>
+</li>
+<li>
+<p>主动模式</p>
+<ul>
+<li>agent端文件配置  <code>/etc/zabbix/zabbix_agentd.conf</code><div><pre class="hljs"><code><span class="hljs-attr">Server</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span> <span class="hljs-comment"># !强制! 指向zabbix server</span>
+<span class="hljs-attr">ServerActive</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span> <span class="hljs-comment"># !强制! zabbix服务器IP地址</span>
+<span class="hljs-attr">Hostname</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.77</span> <span class="hljs-comment"># !强制! 当前主机IP，必须与zabbix server前端主机名称(Host name)相同</span>
+<span class="hljs-attr">Timeout</span>=<span class="hljs-number">30</span>   <span class="hljs-comment"># （建议配置 超时时间）</span></code></pre></div>
+</li>
+<li>重启服务
+<blockquote>
+<p>systemctl restart zabbix-agent.service</p>
+</blockquote>
+</li>
+<li>前端配置<br />
+<img src="/_resources/aa0751cf9f3749cbb21777ada0e3828a.png" /><br />
+<img src="/_resources/d240e7afc06c4a049de777af33d5aeb7.png" /></li>
+</ul>
+<blockquote>
+<p>主动模式模板Linux by Zabbix agent active的agent.ping监控项ZBX标记不会变绿，需要修改<br />
+为被动模式ZBX标记才能被绿 (可以通过添加 agent.ping 变绿)<br />
+!!!</p>
+</blockquote>
+</li>
+</ul>
+<h1 id="proxy主动被动模式案例">proxy主动被动模式案例</h1>
+<h2 id="原理">原理</h2>
+<p>通过<code>zabbix proxy</code>将数据发送给<code>zabbix server</code>，一来减轻了<code>zabbix server</code>的负担，二来可以实现<code>分布式</code>监控，将分散在各处的数据汇集到同一个监控上。<br />
+zabbix proxy 是一个数据收集器,它<code>不计算触发器</code>、<code>不处理事件</code>、<code>不发送报警</code>。</p>
+<h2 id="架构">架构</h2>
+<p><img src="/_resources/f0e00fc6403a489b8b81fdaa14e99036.png" /></p>
+<ul>
+<li><code>zabbix proxy</code>仅仅需要一条<code>tcp</code>连接到zabbix server，所以防火墙上仅仅需要加上一条规则即可。</li>
+<li><code>zabbix proxy</code>数据库必须和<code>server</code>分开，否则数据会被破坏，毕竟这两个数据库的表大部分都相同。总之记住，数据库分开即可。</li>
+<li><code>proxy</code>收集到数据之后，首先将数据缓存在本地，然后在<code>一定得时间</code>之后传递给<code>zabbix server</code>。</li>
+<li>这个时间由proxy配置文件中参数<code>ProxyLocalBuffer</code> and <code>ProxyOfflineBuffer</code>决定。</li>
+</ul>
+<h2 id="安装proxy">安装proxy</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># Rocky8 / Mysql</span>
+1. 导入官方源
+rpm -Uvh https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbix-release-6.0-4.el8.noarch.rpm
+sed -i.bak <span class="hljs-string">'s/repo.zabbix.com/mirrors.aliyun.com\/zabbix/'</span> /etc/yum.repos.d/zabbix.repo
+dnf clean all
+
+2. 安装源
+dnf install zabbix-proxy-mysql zabbix-sql-scripts zabbix-selinux-policy mysql-server
+
+3. 创建数据库
+<span class="hljs-comment"># mysql -uroot -p</span>
+password
+mysql&gt; create database zabbix_proxy character <span class="hljs-built_in">set</span> utf8mb4 collate utf8mb4_bin;
+mysql&gt; create user zabbix@localhost identified by <span class="hljs-string">'alopex'</span>;
+mysql&gt; grant all privileges on zabbix_proxy.* to zabbix@localhost;
+mysql&gt; <span class="hljs-built_in">set</span> global log_bin_trust_function_creators = 1;
+mysql&gt; quit;
+
+4. 导入数据库脚本
+cat /usr/share/zabbix-sql-scripts/mysql/proxy.sql | mysql --default-character-set=utf8mb4 -uzabbix -p zabbix_proxy
+mysql -uroot -p
+password
+mysql&gt; <span class="hljs-built_in">set</span> global log_bin_trust_function_creators = 0;
+mysql&gt; quit;
+
+5. 配置数据库密码 
+&gt; /etc/zabbix/zabbix_proxy.conf
+DBPassword=alopex
+
+6. 启动zabbix-proxy
+systemctl restart zabbix-proxy
+systemctl <span class="hljs-built_in">enable</span> zabbix-proxy</code></pre></div>
+<h2 id="工作模式">工作模式</h2>
+<blockquote>
+<p>与<code>zabbix agent</code>定位类似</p>
+</blockquote>
+<ul>
+<li>主动模式：<code>proxy</code>周期性主动发送数据给<code>server</code>，大幅降低<code>server</code>的压力。（<code>推介使用</code>）</li>
+<li>被动模式：<code>server</code>通过发送监控项指令向<code>proxy</code>请求数据</li>
+</ul>
+<h2 id="主动模式-2">主动模式</h2>
+<table>
+<thead>
+<tr>
+<th>zabbix server</th>
+<th>zabbix proxy</th>
+<th>zabbix agent (被监控主机)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>192.168.100.136</td>
+<td>192.168.100.34</td>
+<td>192.168.100.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="proxy文件">proxy文件</h3>
+<blockquote>
+<p>前端配置后，需要重启proxy</p>
+</blockquote>
+<div><pre class="hljs"><code>grep -v '^<span class="hljs-comment">#\|^$' /etc/zabbix/zabbix_proxy.conf</span>
+
+<span class="hljs-attr">ProxyMode</span>=<span class="hljs-number">0</span>  <span class="hljs-comment"># 开启主动模式（默认）</span>
+<span class="hljs-attr">Server</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span> <span class="hljs-comment"># zabbix server IP地址</span>
+<span class="hljs-attr">Hostname</span>=zabbix-proxy-active <span class="hljs-comment"># proxy的名称，需和前端配置一致</span>
+<span class="hljs-attr">LogFile</span>=/var/log/zabbix/zabbix_proxy.log <span class="hljs-comment"># 日志文件路径</span>
+<span class="hljs-attr">LogFileSize</span>=<span class="hljs-number">0</span> 
+<span class="hljs-attr">PidFile</span>=/run/zabbix/zabbix_proxy.pid
+<span class="hljs-attr">SocketDir</span>=/run/zabbix
+<span class="hljs-attr">DBName</span>=zabbix_proxy
+<span class="hljs-attr">DBUser</span>=zabbix
+<span class="hljs-attr">DBPassword</span>=alopex
+<span class="hljs-attr">SNMPTrapperFile</span>=/var/log/snmptrap/snmptrap.log
+<span class="hljs-attr">Timeout</span>=<span class="hljs-number">4</span>
+<span class="hljs-attr">LogSlowQueries</span>=<span class="hljs-number">3000</span>
+<span class="hljs-attr">StatsAllowedIP</span>=<span class="hljs-number">127.0</span>.<span class="hljs-number">0.1</span>,<span class="hljs-number">192.168</span>.<span class="hljs-number">100.0</span>/<span class="hljs-number">24</span> <span class="hljs-comment"># 允许接受的agent网段</span></code></pre></div>
+<h3 id="agent文件">agent文件</h3>
+<div><pre class="hljs"><code>grep -Ev '^<span class="hljs-comment">#|^$' /etc/zabbix/zabbix_agentd.conf </span>
+
+<span class="hljs-attr">PidFile</span>=/run/zabbix/zabbix_agentd.pid
+<span class="hljs-attr">LogFile</span>=/var/log/zabbix/zabbix_agentd.log
+<span class="hljs-attr">LogFileSize</span>=<span class="hljs-number">0</span>
+<span class="hljs-attr">Server</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span>,<span class="hljs-number">192.168</span>.<span class="hljs-number">100.34</span>
+<span class="hljs-attr">ServerActive</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span>,<span class="hljs-number">192.168</span>.<span class="hljs-number">100.34</span>
+<span class="hljs-attr">Hostname</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.77</span>
+<span class="hljs-attr">Timeout</span>=<span class="hljs-number">20</span>
+<span class="hljs-attr">Include</span>=/etc/zabbix/zabbix_agentd.d/*.conf</code></pre></div>
+<h3 id="前端配置">前端配置</h3>
+<p><img src="/_resources/1d12cd7d87524ac4b7f8104ad4fc64ee.png" /><br />
+<img src="/_resources/133d7f150a2645f99230cda754e6f579.png" /></p>
+<h3 id="验证监控">验证监控</h3>
+<p><img src="/_resources/d49284f3965344b99091e45ae67ce508.png" /><br />
+<img src="/_resources/a5288214fff5417bb1e506957d811023.png" /></p>
+<h2 id="被动模式">被动模式</h2>
+<table>
+<thead>
+<tr>
+<th>zabbix server</th>
+<th>zabbix proxy</th>
+<th>zabbix agent (被监控主机)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>192.168.100.136</td>
+<td>192.168.100.34</td>
+<td>192.168.100.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="proxy数据库修改">proxy数据库修改</h3>
+<div><pre class="hljs"><code>mysql -uroot
+
+<span class="hljs-comment"># 被动模式需要zabbix server主动连接，数据库不能仅由proxy访问</span>
+UPDATE mysql.user
+SET Host = <span class="hljs-string">'localhost'</span>
+WHERE User = <span class="hljs-string">'zabbix'</span>;
+
+grant all privileges on zabbix_proxy.* to zabbix@<span class="hljs-string">'192.168.100.%'</span>;
+
+select host,user from mysql.user;</code></pre></div>
+<h3 id="proxy文件-2">proxy文件</h3>
+<div><pre class="hljs"><code>grep -v '^<span class="hljs-comment">#\|^$' /etc/zabbix/zabbix_proxy.conf</span>
+
+<span class="hljs-attr">ProxyMode</span>=<span class="hljs-number">1</span>  <span class="hljs-comment"># 开启被动模式</span>
+<span class="hljs-attr">Server</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span> <span class="hljs-comment"># zabbix server 主机IP</span>
+<span class="hljs-attr">Hostname</span>=zabbix-proxy-passive <span class="hljs-comment"># 代理服务器名称，被动模式不要求和后面Web管理页的agent代理程序名称相同</span>
+<span class="hljs-attr">LogFile</span>=/var/log/zabbix/zabbix_proxy.log 
+<span class="hljs-attr">LogFileSize</span>=<span class="hljs-number">0</span>
+<span class="hljs-attr">PidFile</span>=/run/zabbix/zabbix_proxy.pid
+<span class="hljs-attr">SocketDir</span>=/run/zabbix
+<span class="hljs-attr">DBHost</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.34</span>  <span class="hljs-comment"># 修改为Proxy数据库 IP地址</span>
+<span class="hljs-attr">DBName</span>=zabbix_proxy
+<span class="hljs-attr">DBUser</span>=zabbix
+<span class="hljs-attr">DBPassword</span>=alopex
+<span class="hljs-attr">SNMPTrapperFile</span>=/var/log/snmptrap/snmptrap.log
+<span class="hljs-attr">Timeout</span>=<span class="hljs-number">4</span>
+<span class="hljs-attr">LogSlowQueries</span>=<span class="hljs-number">3000</span>
+<span class="hljs-attr">StatsAllowedIP</span>=<span class="hljs-number">127.0</span>.<span class="hljs-number">0.1</span>,<span class="hljs-number">192.168</span>.<span class="hljs-number">100.0</span>/<span class="hljs-number">24</span></code></pre></div>
+<h3 id="agent文件-2">agent文件</h3>
+<div><pre class="hljs"><code>grep -Ev '^<span class="hljs-comment">#|^$' /etc/zabbix/zabbix_agentd.conf </span>
+
+<span class="hljs-attr">PidFile</span>=/run/zabbix/zabbix_agentd.pid
+<span class="hljs-attr">LogFile</span>=/var/log/zabbix/zabbix_agentd.log
+<span class="hljs-attr">LogFileSize</span>=<span class="hljs-number">0</span>
+<span class="hljs-attr">Server</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.136</span>,<span class="hljs-number">192.168</span>.<span class="hljs-number">100.34</span>  <span class="hljs-comment"># 设置Proxy代理IP</span>
+<span class="hljs-attr">Hostname</span>=<span class="hljs-number">192.168</span>.<span class="hljs-number">100.77</span>
+<span class="hljs-attr">Timeout</span>=<span class="hljs-number">20</span>
+<span class="hljs-attr">Include</span>=/etc/zabbix/zabbix_agentd.d/*.conf</code></pre></div>
+<h3 id="前端配置-2">前端配置</h3>
+<div><pre class="hljs"><code>sudo grep -Ev <span class="hljs-string">'^#|^$'</span> /etc/zabbix/zabbix_server.conf 
+LogFile=/var/<span class="hljs-built_in">log</span>/zabbix/zabbix_server.log
+LogFileSize=0
+PidFile=/run/zabbix/zabbix_server.pid
+SocketDir=/run/zabbix
+DBName=zabbix
+DBUser=zabbix
+DBPassword=alopex
+JavaGateway=192.168.100.121
+StartJavaPollers=10
+SNMPTrapperFile=/var/<span class="hljs-built_in">log</span>/snmptrap/snmptrap.log
+Timeout=4
+FpingLocation=/usr/bin/fping
+Fping6Location=/usr/bin/fping6
+LogSlowQueries=3000
+StatsAllowedIP=127.0.0.1,192.168.100.0/24  <span class="hljs-comment"># 配置可通信IP地址段</span></code></pre></div>
+<p><img src="/_resources/73bc211c0e344e58a1dbd73f5f0028d6.png" /></p>
+<h3 id="验证监控-2">验证监控</h3>
+<h2 id="参考">参考</h2>
+<p><a title="https://www.cnblogs.com/yinzhengjie2020/p/12343765.html" href="https://www.cnblogs.com/yinzhengjie2020/p/12343765.html">zabbix proxy配置实战案例</a></p>
+<h1 id="一键zabbix-agent脚本">一键zabbix agent脚本</h1>
+<div><pre class="hljs"><code><span class="hljs-meta">#!/bin/bash</span>
+
+<span class="hljs-comment"># 安装agent</span>
+wget https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-4+ubuntu22.04_all.deb
+dpkg -i zabbix-release_6.0-4+ubuntu22.04_all.deb
+sed -i <span class="hljs-string">'s!http://repo.zabbix.com!https://mirrors.aliyun.com/zabbix!'</span> /etc/apt/sources.list.d/zabbix.list
+apt update
+apt install zabbix-agent
+
+<span class="hljs-comment"># 主动被动二选一</span>
+<span class="hljs-comment">## 被动模式配置修改</span>
+<span class="hljs-keyword">if</span> [ <span class="hljs-variable">$#</span> -ne 1 ]
+<span class="hljs-keyword">then</span>
+   <span class="hljs-built_in">echo</span> <span class="hljs-string">"Usage: bash script.sh &lt;zabbix-server&gt;"</span>
+   <span class="hljs-built_in">exit</span> -1
+<span class="hljs-keyword">fi</span>
+ZABBIX=<span class="hljs-variable">${1}</span>
+sed -i <span class="hljs-string">"s/^Server=127.0.0.1/Server=<span class="hljs-variable">${ZABBIX}</span>/"</span> /etc/zabbix/zabbix_agentd.conf
+
+<span class="hljs-comment">## 主动模式配置修改</span>
+<span class="hljs-comment">#if [ $# -ne 2 ]</span>
+<span class="hljs-comment">#then</span>
+<span class="hljs-comment">#   echo "Usage: bash script.sh &lt;zabbix-server&gt; &lt;Hostname&gt;"</span>
+<span class="hljs-comment">#   exit -1</span>
+<span class="hljs-comment">#fi</span>
+<span class="hljs-comment">#ZABBIX=${1}</span>
+<span class="hljs-comment">#HOSTNAME=${2}</span>
+<span class="hljs-comment">## sed -i "s/^Server=127.0.0.1/Server=${ZABBIX}/" /etc/zabbix/zabbix_agentd.conf</span>
+<span class="hljs-comment">## sed -i "s/^ServerActive=127.0.0.1/ServerActive=${ZABBIX}/" /etc/zabbix/zabbix_agentd.conf</span>
+<span class="hljs-comment">## sed -i "s/^Hostname=.*/Hostname=${HOSTNAME}/" /etc/zabbix/zabbix_agentd.conf</span>
+
+systemctl restart zabbix-agent</code></pre></div>
+<h1 id="一键zabbix-api添加zabbix-agent">一键zabbix api添加zabbix agent</h1>
+<h2 id="api_create-被动模式">api_create (被动模式)</h2>
+<div><pre class="hljs"><code><span class="hljs-meta">#!/bin/bash</span>
+
+HOST=$(hostname -I | awk <span class="hljs-string">'{print $1}'</span>)
+ZABBIX_SERVER=<span class="hljs-string">'my_zabbix.com'</span>
+nginx_URL=<span class="hljs-string">"http://<span class="hljs-variable">${ZABBIX_SERVER}</span>/api_jsonrpc.php"</span>
+apache_URL=<span class="hljs-string">"http://<span class="hljs-variable">${ZABBIX_SERVER}</span>/zabbix/api_jsonrpc.php"</span>
+
+<span class="hljs-comment"># 选择web服务器类型指定URL</span>
+URL=<span class="hljs-variable">$nginx_URL</span>
+
+token=$(curl -s -XPOST -H <span class="hljs-string">"Content-Type: application/json-rpc"</span> -d <span class="hljs-string">'
+{
+"jsonrpc": "2.0",
+"method": "user.login",
+"params": {
+  "user": "Admin",
+  "password": "zabbix"
+},
+"id": 1,
+"auth": null
+}'</span> <span class="hljs-variable">$URL</span> | cut -d <span class="hljs-string">','</span> -f2 | cut -d <span class="hljs-string">'"'</span> -f4)
+
+curl -s -XPOST -H <span class="hljs-string">"Content-Type: application/json-rpc"</span> -d <span class="hljs-string">'
+{
+"jsonrpc": "2.0",
+"method": "host.create",
+"params": {
+  "host": "'</span><span class="hljs-variable">$HOST</span><span class="hljs-string">'",
+  "name": "'</span>API-<span class="hljs-variable">$HOST</span><span class="hljs-string">'",
+  "interfaces": [
+    {
+      "type": 1,
+      "main": 1,
+      "useip": 1,
+      "ip": "'</span><span class="hljs-variable">$HOST</span><span class="hljs-string">'",
+      "dns": "",
+      "port": "10050"
+    }
+  ],
+  "groups": [
+    {
+      "groupid": "2"
+    }
+  ],
+  "templates": [
+    {
+      "templateid": "10001"
+    }
+  ]
+},
+"id": 1,
+"auth": "'</span><span class="hljs-variable">$token</span><span class="hljs-string">'"
+}'</span> <span class="hljs-variable">$URL</span> | python3 -m json.tool</code></pre></div>
+<h2 id="api_create-主动模式">api_create (主动模式)</h2>
+<div><pre class="hljs"><code><span class="hljs-meta">#!/bin/bash</span>
+
+<span class="hljs-keyword">if</span> [[ <span class="hljs-variable">$#</span> -ne 1 ]]
+<span class="hljs-keyword">then</span>
+  <span class="hljs-built_in">echo</span> <span class="hljs-string">"usage: bash script.sh &lt;HOSTNAME&gt;"</span>
+  <span class="hljs-built_in">exit</span> -1
+<span class="hljs-keyword">fi</span>
+
+HOST=$(hostname -I | awk <span class="hljs-string">'{print $1}'</span>)
+HOSTNAME=<span class="hljs-variable">${1}</span>
+ZABBIX_SERVER=<span class="hljs-string">'my_zabbix.com'</span>
+nginx_URL=<span class="hljs-string">"http://<span class="hljs-variable">${ZABBIX_SERVER}</span>/api_jsonrpc.php"</span>
+apache_URL=<span class="hljs-string">"http://<span class="hljs-variable">${ZABBIX_SERVER}</span>/zabbix/api_jsonrpc.php"</span>
+
+<span class="hljs-comment"># 选择web服务器类型指定URL</span>
+URL=<span class="hljs-variable">$nginx_URL</span>
+
+token=$(curl -s -XPOST -H <span class="hljs-string">"Content-Type: application/json-rpc"</span> -d <span class="hljs-string">'
+{
+"jsonrpc": "2.0",
+"method": "user.login",
+"params": {
+  "user": "Admin",
+  "password": "zabbix"
+},
+"id": 1,
+"auth": null
+}'</span> <span class="hljs-variable">$URL</span> | cut -d <span class="hljs-string">','</span> -f2 | cut -d <span class="hljs-string">'"'</span> -f4)
+
+curl -s -XPOST -H <span class="hljs-string">"Content-Type: application/json-rpc"</span> -d <span class="hljs-string">'
+{
+"jsonrpc": "2.0",
+"method": "host.create",
+"params": {
+  "host": "'</span><span class="hljs-variable">$HOSTNAME</span><span class="hljs-string">'",
+  "name": "'</span><span class="hljs-variable">$HOST</span><span class="hljs-string">'",
+  "interfaces": [
+    {
+      "type": 1,
+      "main": 1,
+      "useip": 1,
+      "ip": "'</span><span class="hljs-variable">$HOST</span><span class="hljs-string">'",
+      "dns": "",
+      "port": "10050"
+    }
+  ],
+  "groups": [
+    {
+      "groupid": "2"
+    }
+  ],
+  "templates": [
+    {
+      "templateid": "10343"
+    }
+  ]
+},
+"id": 1,
+"auth": "'</span><span class="hljs-variable">$token</span><span class="hljs-string">'"
+}'</span> <span class="hljs-variable">$URL</span> | python3 -m json.tool</code></pre></div>
+]]></content:encoded>
+        </item>
         <item>
             <title><![CDATA[第一周作业]]></title>
             <guid>1bce478c5dc64adbb0030681a1d8ab08</guid>
