@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<link rel="stylesheet" href="/_assets/main.css" />
+
+    <title>第三周作业 - Alfie Cheung</title>
+  <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /></head>
+  <body>
+    <div class="main">
+      <nav class="navigation">
+        <a href="/">Alfie Cheung</a>
+      </nav>
+      <article>
+        <header>
+          <h1 class="article-title">第三周作业</h1>
+          <div class="article-info">
+            <div>
+              <span
+                >Created At：<time datetime="1713709481258"
+                  >2024-04-21 22:24</time
+                ></span
+              >
+              <span
+                >Updated At：<time datetime="1713709736889"
+                  >2024-04-21 22:28</time
+                ></span
+              >
+            </div>
+            
+          </div>
+        </header>
+        <div class="article-content markdown-body"><nav class="table-of-contents"><ul><li><a href="#虚拟机管理">虚拟机管理</a><ul><li><a href="#创建">创建</a></li><li><a href="#复制">复制</a><ul><li><a href="#磁盘复制实现">磁盘复制实现</a></li><li><a href="#右键clone">右键clone</a></li><li><a href="#virt-clone克隆">virt-clone克隆</a></li></ul></li><li><a href="#virtio驱动">virtio驱动</a></li><li><a href="#列出主机">列出主机</a></li><li><a href="#开启关闭">开启关闭</a></li><li><a href="#暂停恢复">暂停恢复</a></li><li><a href="#开机启动">开机启动</a></li><li><a href="#删除">删除</a></li><li><a href="#磁盘路径">磁盘路径</a></li><li><a href="#冷迁移">冷迁移</a></li><li><a href="#重要文件">重要文件</a></li><li><a href="#管理远程主机">管理远程主机</a></li></ul></li><li><a href="#镜像制作">镜像制作</a><ul><li><a href="#手动制作">手动制作</a><ul><li><a href="#制作步骤">制作步骤</a></li><li><a href="#操作案例-nginx容器制作">操作案例 (nginx容器制作)</a></li></ul></li></ul></li></ul></nav><h1 id="虚拟机管理">虚拟机管理</h1>
+<h2 id="创建">创建</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 创建一个20G的 qcow2格式磁盘文件</span>
+qemu-img create -f qcow2 /var/lib/libvirt/images/centos7.qcow2 20G
+
+<span class="hljs-comment"># 查看系统支持的os版本</span>
+virt-install --osinfo list  | grep <span class="hljs-string">'os-you-need'</span>
+
+<span class="hljs-comment"># 采用已预先创建的磁盘</span>
+<span class="hljs-comment"># 其中cdrom的权限 用户为libvirt-qemu 用户组为kvm</span>
+virt-install \
+--name centos7 \
+--virt-type kvm \
+--os-variant=centos7.0 \
+--memory 1024 --vcpus 2 \
+--cdrom=/data/isos/CentOS-7-x86_64-Minimal-2009.iso \
+--disk path=/var/lib/libvirt/images/centos7.qcow2 \
+--network network=default \
+--graphics vnc,listen=0.0.0.0 --noautoconsole
+
+<span class="hljs-comment"># 一步创建磁盘+虚拟机</span>
+virt-install \
+--name centos7 \
+--virt-type kvm \
+--os-variant=centos7.0 \
+--memory 1024 --vcpus 2 \
+--cdrom=/data/isos/CentOS-7-x86_64-Minimal-2009.iso \
+--disk path=/var/lib/libvirt/images/centos7.qcow2,size=10,format=qcow2,bus=virtio \
+--network network=default \
+--graphics vnc,listen=0.0.0.0 --autoconsole graphical</code></pre></div>
+<h2 id="复制">复制</h2>
+<h3 id="磁盘复制实现">磁盘复制实现</h3>
+<div><pre class="hljs"><code>cp -a /var/lib/libvirt/images/xxxx.qcow2 \
+/var/lib/libvirt/images/xxxxx-2.qcow2</code></pre></div>
+<p><img src="/_resources/670fe1ca49e14fb8be5f8e8fdd565522.png" /></p>
+<p><img src="/_resources/b0ca3ddab6444678aab87c8094c42cd7.png" /></p>
+<h3 id="右键clone">右键clone</h3>
+<p><img src="/_resources/90530961e07b42e1a2e34c4298bc0145.png" /><br />
+<img src="/_resources/0dfc39b892084bcabf5de423ed285200.png" /><br />
+<img src="/_resources/308a3fe30ceb4efd9bcbb75e23d5c74b.png" /></p>
+<h3 id="virt-clone克隆">virt-clone克隆</h3>
+<div><pre class="hljs"><code>virt-clone -o rocky8 -n rocky8-3
+-o rocky8   <span class="hljs-comment">#指已存在的虚拟机的名称</span>
+-n rocky8-3 <span class="hljs-comment">#新虚拟机的名称</span>
+-f /var/lib/libvirt/images/rocky8-3.qcow2 <span class="hljs-comment">#新虚拟机磁盘文件路径，此文件自动生成，不需要事先创建</span></code></pre></div>
+<h2 id="virtio驱动">virtio驱动</h2>
+<blockquote>
+<p>virtio 是一种 <code>I/O 半虚拟化</code>解决方案，是一套通用 <code>I/O 设备虚拟化</code>的程序，是对半虚拟化 <code>Hypervisor</code> 中的一组通用 <code>I/O 设备的抽象</code>，提供了一套上层应用与各 <code>Hypervisor</code> 虚拟化设备（<code>KVM</code>，<code>Xen</code>， <code>VMware</code>等）之间的通信框架和编程接口，减少跨平台所带来的兼容性问题，大大提高驱动程序开发效率，<code>Windows</code> 系统需要单独安装<code>virtio驱动</code>，<code>Linux</code>系统自带<code>virtio驱动</code>。<br />
+<img src="/_resources/a0267ce330ea4290956681fcf2ddf0f8.png" /></p>
+</blockquote>
+<blockquote>
+<p>安装 virtio 的<a title="http://www.Linux-kvm.org/page/Downloads" href="http://www.Linux-kvm.org/page/Downloads">驱动</a></p>
+</blockquote>
+<ol>
+<li>该驱动安装主要针对<code>windows</code>宿主机安装</li>
+<li>需要在创建虚拟机的时候，创建两个光驱，一个放windows镜像，一个存放virtio驱动软件</li>
+<li>安装系统时，在<code>硬盘安装驱动</code>，先安装<code>virtio</code>驱动</li>
+<li>系统安装完成后，对网卡/PCIe等进行 <code>virtio</code>驱动的安装</li>
+<li>（可选）对于需要<code>重置</code>/<code>作为模板</code>的windwos虚拟机使用 <code>sysprep</code> 对其进行重写包括<code>SID</code>在内的信息</li>
+</ol>
+<h2 id="列出主机">列出主机</h2>
+<blockquote>
+<p>virsh list --all<br />
+virsh list --uuid --all --name</p>
+</blockquote>
+<h2 id="开启关闭">开启关闭</h2>
+<blockquote>
+<p>virsh start centos7<br />
+virsh shutdown centos7<br />
+virsh reboot centos7</p>
+</blockquote>
+<h2 id="暂停恢复">暂停恢复</h2>
+<blockquote>
+<p>virsh suspend centos7<br />
+virsh resume centos7</p>
+</blockquote>
+<h2 id="开机启动">开机启动</h2>
+<p><img src="/_resources/a17df8af72224835b2172b9d1c7b986a.png" /><br />
+OR</p>
+<blockquote>
+<p>virsh autostart centos7</p>
+</blockquote>
+<p>OR</p>
+<blockquote>
+<p>通过将配置文件软链接到<code>/etc/libvirt/qemu/autostart/</code> 目录下<br />
+ln -s /etc/libvirt/qemu/centos7.xml /etc/libvirt/qemu/autostart/centos7.xml</p>
+</blockquote>
+<h2 id="删除">删除</h2>
+<blockquote>
+<p>virsh undefine centos7 # 删除虚拟机配置，但不删除硬盘文件<br />
+virsh undefine centos7 --remove-all-storage  # 删除虚拟机包括磁盘文件</p>
+</blockquote>
+<h2 id="磁盘路径">磁盘路径</h2>
+<blockquote>
+<p>virsh domblklist centos7</p>
+</blockquote>
+<h2 id="冷迁移">冷迁移</h2>
+<ol>
+<li>生成主机的<code>xml</code>文件</li>
+</ol>
+<blockquote>
+<p>virsh dumpxml centos7 &gt; centos7.xml</p>
+</blockquote>
+<ol start="2">
+<li>编辑按需修改
+<ul>
+<li>id // id是一个递增的唯一数字</li>
+<li>disk.source // 磁盘文件ZQ</li>
+<li>interface.mac //mac地址</li>
+<li>interface.target //网络类型 vnetX</li>
+</ul>
+</li>
+<li>将 <code>centos7.xml</code> 文件复制到另外一个主机上 （同系统）</li>
+</ol>
+<blockquote>
+<p>scp centos7.xml root@192.168.1.1:/etc/libvirt/qemu/</p>
+</blockquote>
+<h2 id="重要文件">重要文件</h2>
+<ol>
+<li>主机配置XML文件 <code>/etc/libvirt/qemu/centos7.xml</code></li>
+<li>开机启动的gust host 目录 <code>/etc/libvirt/qemu/autostart/</code></li>
+</ol>
+<h2 id="管理远程主机">管理远程主机</h2>
+<ol>
+<li>建立互信 (二选一)
+<ul>
+<li>通过openssh-askpass包
+<ul>
+<li>apt install -y ssh-askpass / yum -y install openssh-askpass</li>
+</ul>
+</li>
+<li>基于本机到远程主机的key验证 ssh-copy-id
+<ul>
+<li>ssh-keygen</li>
+<li>ssh-copy-id 192.168.1.1 #远程主机地址</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>File --&gt; Add Connection<br />
+<img src="/_resources/89ce23fe6d934d168f0d115beaa78e7a.png" /></li>
+<li>添加远程主机</li>
+</ol>
+<h1 id="镜像制作">镜像制作</h1>
+<h2 id="手动制作">手动制作</h2>
+<blockquote>
+<p>基于容器制作</p>
+</blockquote>
+<p>!!! info commit 命令<br />
+docker commit --help<br />
+Usage:  docker commit [OPTIONS] CONTAINER [REPOSITORY[:TAG]]</p>
+<p>Create a new image from a container's changes</p>
+<p>Options:<br />
+-a, --author string    Author (e.g., "John Hannibal Smith <a title="mailto:hannibal@a-team.com" href="mailto:hannibal@a-team.com">hannibal@a-team.com</a>")<br />
+-c, --change list      Apply Dockerfile instruction to the created image<br />
+-m, --message string   Commit message<br />
+-p, --pause            Pause container during commit (default true)<br />
+!!!</p>
+<h3 id="制作步骤">制作步骤</h3>
+<ol>
+<li>下载官方镜像</li>
+<li>前台命令行方式启动</li>
+<li>安装所需工具或应用包等</li>
+<li>提交处理好的镜像</li>
+<li>将新生成的镜像生成容器</li>
+</ol>
+<h3 id="操作案例-nginx容器制作">操作案例 (nginx容器制作)</h3>
+<div><pre class="hljs"><code>1. 拉取centos基础镜像
+docker pull rockylinux:9.3
+
+2. 启动基础镜像进入容器
+docker run -it --name rockylinux-base rockylinux:9.3 /bin/bash
+
+3. 更改源
+sed -e <span class="hljs-string">'s|^mirrorlist=|#mirrorlist=|g'</span> \
+    -e <span class="hljs-string">'s|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g'</span> \
+    -i.bak \
+    /etc/yum.repos.d/rocky-*.repo
+    
+sed -e <span class="hljs-string">'s|^mirrorlist=|#mirrorlist=|g'</span> \
+    -e <span class="hljs-string">'s|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g'</span> \
+    -i.bak \
+    /etc/yum.repos.d/rocky.repo
+
+dnf makecache
+
+5. 下载nginx
+yum install nginx iproute net-tools -y
+
+6. 清理缓存 （减少空间大小）
+rm -rf /var/cache/dnf/*
+
+7. 关闭nginx后台服务
+<span class="hljs-comment"># sed 's!daemon on;!daemon off;!' /etc/nginx/nginx.conf</span>
+<span class="hljs-comment"># 在全局设置  nginx/1.20.1</span>
+sed -i <span class="hljs-string">'9a\daemon off;'</span>  /etc/nginx/nginx.conf
+nginx -t
+
+8. 准备自定义页面
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"&lt;h1&gt;Hello my container&lt;/h1&gt;"</span> &gt; /usr/share/nginx/html/index.html
+
+9. 提交镜像
+docker commit -a <span class="hljs-string">"root@alopex.com"</span> -m <span class="hljs-string">"rockylinux nginx v1"</span> -c <span class="hljs-string">"EXPOSE 80 443"</span> rockylinux-base alopex/rockylinux-nginx:v1
+
+10. 启动容器
+docker run -d -p 8080:80 \
+--name rocky-base-nginx \
+alopex/rockylinux-nginx:v1 \
+/usr/sbin/nginx
+
+11. 测试容器
+curl 127.0.0.1:8080</code></pre></div>
+</div>
+      </article>
+    </div>
+  </body>
+</html>
