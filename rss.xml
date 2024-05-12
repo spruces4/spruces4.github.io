@@ -4,9 +4,2155 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Sun, 21 Apr 2024 14:31:21 GMT</lastBuildDate>
+        <lastBuildDate>Sun, 12 May 2024 14:19:31 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
+        <item>
+            <title><![CDATA[第五周作业]]></title>
+            <guid>5d1c252ce2fa414e967c0ac378c05689</guid>
+            <pubDate>Sun, 12 May 2024 14:14:29 GMT</pubDate>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#keepalived-nginx-高可用">keepalived nginx 高可用</a><ul><li><a href="#创建脚本执行用户">创建脚本执行用户</a></li><li><a href="#nginx代理服务配置">Nginx代理服务配置</a></li><li><a href="#应用服务配置">应用服务配置</a></li><li><a href="#keepalived-服务配置">Keepalived 服务配置</a></li><li><a href="#测试检查">测试检查</a></li></ul></li><li><a href="#keepalived-haproxy-高可用">keepalived haproxy 高可用</a><ul><li><a href="#haproxy-服务配置">HAProxy 服务配置</a></li><li><a href="#应用服务配置-1">应用服务配置</a></li><li><a href="#keepalived-服务配置-1">Keepalived 服务配置</a></li><li><a href="#检查测试">检查测试</a></li></ul></li><li><a href="#redis-集群部署">Redis 集群部署</a><ul><li><a href="#部署">部署</a><ul><li><a href="#安装redis">安装redis</a></li><li><a href="#修改参数">修改参数</a></li><li><a href="#创建集群">创建集群</a></li><li><a href="#验证集群">验证集群</a></li></ul></li></ul></li></ul></nav><h1 id="keepalived-nginx-高可用">keepalived nginx 高可用</h1>
+<p>!!! warning SElinux<br />
+该配置需要关闭<code>SELINXU</code>，否则会出现 <code>503</code> 告警。<br />
+<img src="/_resources/dbf08aa9cd4d4fd9bb217974e8feab11.png" /><br />
+!!!</p>
+<h2 id="创建脚本执行用户">创建脚本执行用户</h2>
+<div><pre class="hljs"><code>useradd -r -s <span class="hljs-regexp">/sbin/</span>nologin keepalived_script
+chown keepalived_script:keepalived_script <span class="hljs-regexp">/etc/</span>keepalived/check_nginx.sh
+chmod <span class="hljs-number">655</span> <span class="hljs-regexp">/etc/</span>keepalived/check_nginx.sh</code></pre></div>
+<h2 id="nginx代理服务配置">Nginx代理服务配置</h2>
+<div><pre class="hljs"><code><span class="hljs-regexp">/etc/</span>nginx/nginx.conf
+
+user nginx;
+worker_processes auto;
+error_log <span class="hljs-regexp">/var/</span>log<span class="hljs-regexp">/nginx/</span>error.log;
+pid <span class="hljs-regexp">/run/</span>nginx.pid;
+
+<span class="hljs-comment"># Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.</span>
+include <span class="hljs-regexp">/usr/</span>share<span class="hljs-regexp">/nginx/m</span>odules/*.conf;
+
+events {
+    worker_connections <span class="hljs-number">1024</span>;
+}
+
+http {
+    upstream demos {
+        server <span class="hljs-number">192.168</span>.<span class="hljs-number">100.103</span>:<span class="hljs-number">80</span> weight=<span class="hljs-number">1</span>;  <span class="hljs-comment"># 后端web服务器</span>
+        server <span class="hljs-number">192.168</span>.<span class="hljs-number">100.104</span>:<span class="hljs-number">80</span> weight=<span class="hljs-number">1</span>;  <span class="hljs-comment"># 后端web服务器</span>
+    }
+    server {
+        listen <span class="hljs-number">80</span>;
+        location /{
+                proxy_pass http:<span class="hljs-regexp">//</span>demos/;
+        }
+    }
+}
+~           </code></pre></div>
+<h2 id="应用服务配置">应用服务配置</h2>
+<div><pre class="hljs"><code>yum -y install nginx
+systemctl start nginx 
+
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"&lt;h1&gt;`hostname -I`&lt;/h1&gt;"</span> &gt; /usr/share/nginx/html/index.html</code></pre></div>
+<h2 id="keepalived-服务配置">Keepalived 服务配置</h2>
+<div><pre class="hljs"><code>! Configuration File for keepalived
+
+<span class="hljs-keyword">global_defs</span> {
+   router_id alfie_keepalive_1  <span class="hljs-comment"># 备用节点修改名称</span>
+   vrrp_skip_check_adv_addr
+   vrrp_garp_interval <span class="hljs-number">0</span>
+   vrrp_gna_interval <span class="hljs-number">0</span>
+   vrrp_mcast_group4 <span class="hljs-number">224.0</span>.<span class="hljs-number">0</span>.<span class="hljs-number">18</span>
+}
+
+<span class="hljs-keyword">vrrp_script</span> <span class="hljs-keyword">check_nginx</span> {
+    script <span class="hljs-string">"/etc/keepalived/check_nginx.sh"</span>  <span class="hljs-comment"># 使用 kill 发送 0 信号 确认程序是否工作正常</span>
+    interval <span class="hljs-number">1</span>
+    weight -<span class="hljs-number">30</span>  <span class="hljs-comment"># 失败后降低 30 权重</span>
+    fall <span class="hljs-number">3</span>
+    rise <span class="hljs-number">5</span>
+    timeout <span class="hljs-number">2</span>
+}
+
+<span class="hljs-keyword">vrrp_instance</span> <span class="hljs-keyword">alfie_ka1</span> {
+    state MASTER  <span class="hljs-comment"># 备用节点为 BACKUP</span>
+    interface ens33
+    virtual_router_id <span class="hljs-number">61</span>
+    <span class="hljs-literal">priority</span> <span class="hljs-number">100</span>  <span class="hljs-comment"># 备用节点默认权重 80</span>
+    advert_int <span class="hljs-number">1</span>
+    authentication {
+        <span class="hljs-literal">auth_type</span> PASS
+        auth_pass alopex
+    }
+    <span class="hljs-keyword">virtual_ipaddress</span> {
+        <span class="hljs-number">192.168</span>.<span class="hljs-number">100.111</span>/<span class="hljs-number">24</span>
+    }
+    <span class="hljs-keyword">unicast_src_ip</span> 192.168.100.101  <span class="hljs-comment"># 备用节点修改本地IP</span>
+    unicast_peer{
+        192.168.100.102  <span class="hljs-comment"># 备用节点此处填写主节点IP</span>
+    }
+    <span class="hljs-keyword">track_script</span> {
+        check_nginx
+    }
+}
+include /etc/keepalived/conf.d/*.conf</code></pre></div>
+<div><pre class="hljs"><code>chmod a+x /etc/keepalived/check_nginx.sh
+<span class="hljs-comment"># 文件 /usr/bin/killall -0 nginx</span>
+
+<span class="hljs-comment">#!/bin/bash</span>
+/usr/bin/killall -0 nginx</code></pre></div>
+<h2 id="测试检查">测试检查</h2>
+<p><img src="/_resources/02644064d4744c069321d380e5dcf46e.png" /></p>
+<ul>
+<li>
+<p>关闭DS1 keepalived</p>
+<ul>
+<li>地址切换正常<br />
+<img src="/_resources/7386e8bfcea140429ef7d280c8768e6e.png" /></li>
+<li>应用访问正常<br />
+<img src="/_resources/353ef8cfcc7d4909ad78c168887f27f7.png" /></li>
+</ul>
+</li>
+<li>
+<p>关闭RS1</p>
+<ul>
+<li>应用访问正常<br />
+<img src="/_resources/4975aad83b4d4d4bb10466d0c26ecbf3.png" /></li>
+</ul>
+</li>
+<li>
+<p>健康检查 （恢复DS1 keepalived 关闭 nginx）<br />
+<img src="/_resources/bd151b80681648659c49ae8a57c14836.png" /></p>
+</li>
+</ul>
+<h1 id="keepalived-haproxy-高可用">keepalived haproxy 高可用</h1>
+<h2 id="haproxy-服务配置">HAProxy 服务配置</h2>
+<p>!!! warning 注意事项</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 绑定非自身IP地址</span>
+vim /etc/sysctl.conf
+net.ipv4.ip_nonlocal_bind = 1
+
+sysctl -p
+
+<span class="hljs-comment"># 在防火墙上放行通对VIP的访问</span>
+firewall-cmd --permanent --add-rich-rule=<span class="hljs-string">'rule family="ipv4" destination address="192.168.100.111" accept'</span> 
+firewall-cmd --reload</code></pre></div>
+<p>!!!</p>
+<div><pre class="hljs"><code>global
+  daemon
+  stats socket /var/lib/haproxy/haproxy.sock mode 600 level admin
+  nbthread  5
+
+  user haproxy
+  group haproxy
+  maxconn 100000
+
+defaults
+  option http-keep-alive
+  maxconn 100000
+  mode http
+  timeout connect 300000ms
+  timeout client 300000ms
+  timeout server 300000ms
+
+frontend demo-web-port
+  bind 192.168.100.111:80
+  mode http
+  use_backend demo-web
+
+backend demo-web
+  mode http
+  default-server inter 1000 weight 6
+  server web2 192.168.100.103:80 weight 2<span class="hljs-built_in"> check </span>addr 192.168.100.103 port 80
+  server web3 192.168.100.104:80 weight 2<span class="hljs-built_in"> check </span>addr 192.168.100.104 port 80</code></pre></div>
+<h2 id="应用服务配置-2">应用服务配置</h2>
+<div><pre class="hljs"><code>yum -y install nginx
+systemctl start nginx 
+
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"&lt;h1&gt;`hostname -I`&lt;/h1&gt;"</span> &gt; /usr/share/nginx/html/index.html</code></pre></div>
+<h2 id="keepalived-服务配置-2">Keepalived 服务配置</h2>
+<div><pre class="hljs"><code>! Configuration File for keepalived
+
+<span class="hljs-keyword">global_defs</span> {
+   router_id alfie_keepalive_1  <span class="hljs-comment"># 备用节点修改名称</span>
+   vrrp_skip_check_adv_addr
+   vrrp_garp_interval <span class="hljs-number">0</span>
+   vrrp_gna_interval <span class="hljs-number">0</span>
+   vrrp_mcast_group4 <span class="hljs-number">224.0</span>.<span class="hljs-number">0</span>.<span class="hljs-number">18</span>
+}
+
+<span class="hljs-keyword">vrrp_script</span> <span class="hljs-keyword">check_haproxy</span> {
+    script <span class="hljs-string">"/etc/keepalived/check_haproxy.sh"</span>
+    interval <span class="hljs-number">1</span>
+    weight -<span class="hljs-number">30</span>
+    fall <span class="hljs-number">3</span>
+    rise <span class="hljs-number">5</span>
+    timeout <span class="hljs-number">2</span>
+}
+
+<span class="hljs-keyword">vrrp_instance</span> <span class="hljs-keyword">alfie_ka1</span> {
+    state MASTER <span class="hljs-comment"># 备用节点修改为 BACKUP</span>
+    interface ens33
+    virtual_router_id <span class="hljs-number">61</span>
+    <span class="hljs-literal">priority</span> <span class="hljs-number">100</span>  <span class="hljs-comment"># 备用节点修改 80</span>
+    advert_int <span class="hljs-number">1</span>
+    authentication {
+        <span class="hljs-literal">auth_type</span> PASS
+        auth_pass alopex
+    }
+    <span class="hljs-keyword">virtual_ipaddress</span> {
+        <span class="hljs-number">192.168</span>.<span class="hljs-number">100.111</span>/<span class="hljs-number">24</span>
+    }
+    <span class="hljs-keyword">unicast_src_ip</span> 192.168.100.101 <span class="hljs-comment"># 备用节点修改为本地IP</span>
+    unicast_peer{
+        192.168.100.102   <span class="hljs-comment"># 备用节点填主用节点IP</span>
+    }
+    <span class="hljs-keyword">track_script</span> {
+        check_haproxy
+    }
+}
+
+include /etc/keepalived/conf.d/*.conf
+</code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-regexp">/etc/</span>keepalived/check_haproxy.sh
+chmod <span class="hljs-number">655</span> <span class="hljs-regexp">/etc/</span>keepalived/check_haproxy.sh
+<span class="hljs-comment">#!/bin/bash</span>
+
+<span class="hljs-keyword">if</span> <span class="hljs-regexp">/usr/</span>bin/killall -<span class="hljs-number">0</span> haproxy
+then
+    <span class="hljs-keyword">exit</span> <span class="hljs-number">0</span>
+<span class="hljs-keyword">else</span>
+    systemctl restart haproxy
+fi</code></pre></div>
+<h2 id="检查测试">检查测试</h2>
+<p><img src="/_resources/aa5decab6b8c4d828fb3a154308eb261.png" /><br />
+<img src="/_resources/7c834cb7de134b1683b558970392f65a.png" /></p>
+<ul>
+<li>
+<p>关闭DS1 (keepalived)</p>
+<ul>
+<li>地址切换正常<br />
+<img src="/_resources/a4f2580fe24b4e779c67ea07eb3b2d6b.png" /></li>
+<li>应用访问正常<br />
+<img src="/_resources/5c8b13fe78504bd7a986bb2dbd2cc2fc.png" /></li>
+</ul>
+</li>
+<li>
+<p>关闭RS1</p>
+<ul>
+<li>应用访问正常<br />
+<img src="/_resources/6129d9ac06564637b7b5c57dbecd1816.png" /></li>
+</ul>
+</li>
+<li>
+<p>健康检查（恢复keepalived 关闭DS1 (Haproxy)）<br />
+<img src="/_resources/7e40a06eaf5a443fb144d21f35b41832.png" /></p>
+</li>
+</ul>
+<h1 id="redis-集群部署">Redis 集群部署</h1>
+<h2 id="部署">部署</h2>
+<table>
+<thead>
+<tr>
+<th>主机</th>
+<th>ip</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>s2</td>
+<td>192.168.100.102</td>
+</tr>
+<tr>
+<td>s3</td>
+<td>192.168.100.103</td>
+</tr>
+<tr>
+<td>s4</td>
+<td>192.168.100.104</td>
+</tr>
+</tbody>
+</table>
+<h3 id="安装redis">安装redis</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 关闭SELinux和firewalld</span>
+setenforce 0
+systemctl stop firewalld
+
+<span class="hljs-comment"># 下载源代码包</span>
+<span class="hljs-comment"># github拥有最新的版本</span>
+<span class="hljs-comment">#wget -O redis.7.2.2.tar.gz https://github.com/redis/redis/archive/refs/tags/7.2.2.tar.gz</span>
+<span class="hljs-comment"># http://download.redis.io/releases/</span>
+wget http://download.redis.io/releases/redis-7.2.2.tar.gz
+
+<span class="hljs-comment"># 环境准备</span>
+yum -y install gcc make jemalloc-devel systemd-devel
+
+<span class="hljs-comment"># 解压安装</span>
+tar -xvf redis-7.2.2.tar.gz
+<span class="hljs-built_in">cd</span> redis-7.2.2
+mkdir -p /apps/redis
+make -j 2 USE_SYSTEMD=yes PREFIX=/apps/redis install
+
+<span class="hljs-comment"># 环境变量更新</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">'PATH=/apps/redis/bin:$PATH'</span> &gt; /etc/profile.d/redis.sh
+. /etc/profile.d/redis.sh
+
+<span class="hljs-comment"># 自定义配置文件，日志，数据存放目录</span>
+mkdir /apps/redis/{etc,<span class="hljs-built_in">log</span>,data,run}
+cp /root/redis-7.2.2/redis.conf /apps/redis/etc/
+
+<span class="hljs-comment"># 日志配置</span>
+sed <span class="hljs-string">'s/logfile/logfile "/apps/redis/log/6379_redis.log"/'</span> /apps/redis.conf
+
+<span class="hljs-comment"># 用户创建</span>
+useradd -r -s /sbin/nologin redis
+chown -R redis.redis /apps/redis/
+
+<span class="hljs-comment"># 内核修复</span>
+sed -i <span class="hljs-string">'$ a\net.core.somaxconn = 1024'</span> /etc/sysctl.conf &amp;&amp; sysctl -p
+sed -i <span class="hljs-string">'$ a\vm.overcommit_memory = 1'</span> /etc/sysctl.conf &amp;&amp; sysctl -p
+
+<span class="hljs-comment"># 服务文件</span>
+<span class="hljs-comment"># /lib/systemd/system/redis.service</span>
+cat &gt; /lib/systemd/system/redis.service &lt;&lt;<span class="hljs-string">EOF
+[Unit]
+Description=Redis persistent key-value database
+After=network.target
+
+[Service]
+ExecStart=/apps/redis/bin/redis-server /apps/redis/etc/redis.conf --supervised systemd
+ExecStop=/bin/kill -s QUIT $MAINPID
+Type=notify
+User=redis
+Group=redis
+RuntimeDirectory=redis
+RuntimeDirectoryMode=0755
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+EOF</span>
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl daemon-reload
+systemctl <span class="hljs-built_in">enable</span> --now redis</code></pre></div>
+<h3 id="修改参数">修改参数</h3>
+<div><pre class="hljs"><code>sed -i.bak \
+-e <span class="hljs-string">'s/bind 127.0.0.1/bind 0.0.0.0/'</span>  \
+-e <span class="hljs-string">'/masterauth/a masterauth alopex'</span> \
+-e <span class="hljs-string">"/^dir .*/c dir /apps/redis/data/"</span>  \
+-e <span class="hljs-string">"/logfile .*/c logfile /apps/redis/log/redis-6379.log"</span> \
+-e  <span class="hljs-string">"/^pidfile .*/c  pidfile /apps/redis/run/redis_6379.pid"</span> \
+-e <span class="hljs-string">"/# requirepass/a requirepass alopex"</span> \
+-e <span class="hljs-string">'/# cluster-enabled yes/a cluster-enabled yes'</span> \
+-e <span class="hljs-string">'/# cluster-config-file nodes-6379.conf/a cluster-config-file nodes-6379.conf'</span> \
+-e <span class="hljs-string">'/cluster-require-full-coverage yes/a cluster-require-full-coverage no'</span> \
+/apps/redis/etc/redis.conf</code></pre></div>
+<h3 id="创建集群">创建集群</h3>
+<blockquote>
+<p>集群功能已开启<br />
+<img src="/_resources/c19ae1389de7408e9c222558607c2fd5.png" /></p>
+</blockquote>
+<blockquote>
+<p>cluster 状态启动<br />
+<img src="/_resources/b9f1e910b387463a99bb1e4735113051.png" /></p>
+</blockquote>
+<blockquote>
+<p>16379 端口已启动<br />
+<img src="/_resources/5fcb26c2c6a64ff4b64a96c08b461439.png" /></p>
+</blockquote>
+<blockquote>
+<p>创建集群</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 三个节点不创建 slave 节点</span>
+redis-cli -a alopex --cluster create 192.168.100.102:6379 192.168.100.103:6379 192.168.100.104:6379</code></pre></div>
+<p><img src="/_resources/2ed8a09a9b764eeaa23c15b4952dad8e.png" /></p>
+<h3 id="验证集群">验证集群</h3>
+<blockquote>
+<p>master1 节点查看<br />
+<img src="/_resources/151237e673294a41ac73303f0289d04c.png" /></p>
+</blockquote>
+<blockquote>
+<p>node节点状态查看<br />
+<img src="/_resources/e51315eabfdd453ba2a6695626ea6781.png" /></p>
+</blockquote>
+<blockquote>
+<p>Cluster info查看<br />
+<img src="/_resources/80447bed281243d79e2fddc0b78dd33c.png" /></p>
+</blockquote>
+<blockquote>
+<p>任意节点状态查看<br />
+<img src="/_resources/080ae31c141c4219aca5fa734967b25d.png" /></p>
+</blockquote>
+]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[第四周作业]]></title>
+            <guid>be327d9451b24263a584cc57ae4c5967</guid>
+            <pubDate>Sat, 27 Apr 2024 23:58:08 GMT</pubDate>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#dockerfile命令">Dockerfile命令.</a><ul><li><a href="#dockerfile命令-1">Dockerfile命令</a><ul><li><a href="#from">FROM</a></li><li><a href="#label">LABEL</a></li><li><a href="#run">RUN</a></li><li><a href="#env">ENV</a></li><li><a href="#copy">COPY</a></li><li><a href="#add">ADD</a></li><li><a href="#cmd">CMD</a></li><li><a href="#entrypoint">ENTRYPOINT</a></li><li><a href="#arg">ARG</a></li><li><a href="#volume">VOLUME</a></li><li><a href="#expose">EXPOSE</a></li><li><a href="#workdir">WORKDIR</a></li><li><a href="#onbuild">ONBUILD</a></li><li><a href="#user">USER</a></li><li><a href="#healthcheck">HEALTHCHECK</a></li><li><a href="#dockerignore-文件">.dockerignore 文件</a></li></ul></li></ul></li><li><a href="#docker-网络模式">Docker 网络模式</a><ul><li><a href="#默认网络">默认网络.</a><ul><li><a href="#容器间通信">容器间通信</a></li><li><a href="#自定义ip段">自定义IP段</a></li><li><a href="#自定义网桥">自定义网桥</a></li><li><a href="#容器间互联">容器间互联</a></li></ul></li><li><a href="#网络连接模式">网络连接模式.</a><ul><li><a href="#bridge-桥接模式">Bridge (桥接模式)</a></li><li><a href="#host-主机模式">Host (主机模式)</a></li><li><a href="#none-无网络">none (无网络)</a></li><li><a href="#container-容器网络">container (容器网络)</a></li><li><a href="#自定义网络">自定义网络</a></li></ul></li></ul></li><li><a href="#harbor私有仓库">Harbor私有仓库</a><ul><li><a href="#基本操作">基本操作</a><ul><li><a href="#上传镜像">上传镜像</a></li><li><a href="#下载镜像">下载镜像</a></li><li><a href="#更新配置">更新配置</a></li></ul></li><li><a href="#https请求实现">https请求实现.</a></li></ul></li><li><a href="#jumpserver安装和使用">JumpServer安装和使用</a><ul><li><a href="#部署">部署</a><ul><li><a href="#离线部署">离线部署</a></li><li><a href="#脚本部署">脚本部署</a></li><li><a href="#访问方式">访问方式</a></li><li><a href="#服务管理">服务管理</a></li></ul></li><li><a href="#常用功能">常用功能</a><ul><li><a href="#管理员">管理员</a><ul><li><a href="#创建用户组">创建用户组</a></li><li><a href="#配置用户-登录名称-leslie">配置用户 (登录名称 leslie)</a></li><li><a href="#创建资产">创建资产</a></li><li><a href="#账户模板">账户模板</a></li><li><a href="#账户推送">账户推送</a></li><li><a href="#用户登录">用户登录</a></li><li><a href="#创建授权策略">创建授权策略</a></li><li><a href="#命令执行限制">命令执行限制</a></li></ul></li><li><a href="#操作员">操作员</a><ul><li><a href="#登录账户">登录账户</a></li><li><a href="#webshell登录用户">webshell登录用户</a></li><li><a href="#webshell命令限制">webshell命令限制</a></li></ul></li><li><a href="#审计员">审计员</a><ul><li><a href="#会话查看">会话查看</a></li><li><a href="#命令记录">命令记录</a></li><li><a href="#查看录制视频">查看录制视频</a></li><li><a href="#登录日志">登录日志</a></li><li><a href="#操作日志">操作日志</a></li><li><a href="#改密日志">改密日志</a></li></ul></li></ul></li></ul></li></ul></nav><h1 id="dockerfile命令">Dockerfile命令.</h1>
+<h2 id="dockerfile命令-2">Dockerfile命令</h2>
+<h3 id="from">FROM</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>所有的镜像都通过基础镜像而来，该语句指定基础镜像是谁，基于什么镜像来做。</li>
+</ul>
+</li>
+<li>格式
+<ul>
+<li>
+<p>FROM [--platform=&lt;platform&gt;] &lt;image&gt; [AS &lt;name&gt;]</p>
+</li>
+<li>
+<p>FROM [--platform=&lt;platform&gt;] &lt;image&gt;[:&lt;tag&gt;] [AS &lt;name&gt;]</p>
+</li>
+<li>
+<p>FROM [--platform=&lt;platform&gt;] &lt;image&gt;[@&lt;digest&gt;] [AS &lt;name&gt;]</p>
+</li>
+<li>
+<p><code>--platform</code> 指定镜像的平台，比如: <code>linux/amd64</code>, <code>linux/arm64</code>, or <code>windows/amd64</code></p>
+</li>
+<li>
+<p><code>tag</code> 和 <code>digest</code>是可选项，如果不指定，默认为<code>latest</code><br />
+!!!</p>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!! tip 常见用法</p>
+<ol>
+<li>
+<p>完全自建镜像，需要空镜像<br />
+FROM scratch</p>
+<blockquote>
+<p>scratch是一切镜像的起源，它本身无具体的操作系统，可以理解为一个占位符<br />
+它本质上是一个 0 字节的镜像<br />
+对于静态编译中，多阶段编译有奇效</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 使用 golang 基础镜像进行构建</span>
+<span class="hljs-keyword">FROM</span> golang:<span class="hljs-number">1.16</span> AS builder
+
+<span class="hljs-comment"># 设置工作目录</span>
+<span class="hljs-keyword">WORKDIR</span><span class="language-bash"> /app</span>
+
+<span class="hljs-comment"># 复制 Go 项目文件到容器中</span>
+<span class="hljs-keyword">COPY</span><span class="language-bash"> . .</span>
+
+<span class="hljs-comment"># 静态编译 Go 程序</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o myapp .</span>
+
+<span class="hljs-comment"># 使用 scratch 空白镜像作为最终镜像</span>
+<span class="hljs-keyword">FROM</span> scratch
+
+<span class="hljs-comment"># 从构建阶段复制编译好的可执行文件到最终镜像</span>
+<span class="hljs-keyword">COPY</span><span class="language-bash"> --from=builder /app/myapp /</span>
+
+<span class="hljs-comment"># 定义容器启动时执行的命令</span>
+<span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">"/myapp"</span>]</span></code></pre></div>
+</li>
+<li>
+<p>从精简操作系统的基础下构建<br />
+FROM busybox / FROM alpine</p>
+<blockquote>
+<p>精简操作系统一般在 <code>10M</code>之内，这些系统具备最基础的功能能够胜任一般的错误排查<br />
+不至于如空白镜像，需要自行对工具进行选型、依赖解决等、可以较好地完成部署任务<br />
+是一个性价比极高的基础镜像</p>
+</blockquote>
+</li>
+<li>
+<p>从完整操作系统镜像下构建<br />
+FROM ubuntu / FROM Rockylinux</p>
+<blockquote>
+<p>这些一般为主流操作系统，用户最为熟悉，拥有的系统工具丰富，对于故障和配置排查提供了基础<br />
+一般具备主流的bash，而不是精简系统的sh<br />
+大小一般在<code>100M</code>到<code>500M</code>之间</p>
+</blockquote>
+</li>
+<li>
+<p>从应用镜像构建<br />
+FROM redis / FROM jenkins</p>
+<blockquote>
+<p>这类镜像已经是完整的应用，其空间大小与应用和其选择的系统基座相关<br />
+从这一类镜像进行构建，一般是为了实现告警的自定义功能或精简配置<br />
+!!!</p>
+</blockquote>
+</li>
+</ol>
+<p>!!! warning 注意事项</p>
+<ul>
+<li>应尽量选择体积小的镜像构建，有助于提升性能和资源的使用比<br />
+!!!</li>
+</ul>
+<h3 id="label">LABEL</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>指定元数据，用于标识系统地址、用户、帐号、维护者等公开信息</li>
+</ul>
+</li>
+<li>格式
+<ul>
+<li>LABEL &lt;key&gt;=&lt;value&gt; &lt;key&gt;=&lt;value&gt; &lt;key&gt;=&lt;value&gt; ...<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>维护者信息<div><pre class="hljs"><code><span class="hljs-keyword">LABEL</span><span class="language-bash"> maintainer=<span class="hljs-string">"alfiecheung &lt;root@alfiecheung.com&gt;"</span></span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! warning 注意事项<br />
+无<br />
+!!!</p>
+<h3 id="run">RUN</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>用来在<code>构建镜像</code>阶段需要执行 FROM 指定镜像所支持的Shell命令</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-comment">#shell 格式: 相当于 /bin/sh -c</span>
+&lt;命令&gt;
+此种形式支持环境变量
+<span class="hljs-keyword">RUN</span><span class="language-bash"> &lt;命令&gt;</span>
+<span class="hljs-comment">#exec 格式: 此种形式不支持环境变量,注意:是双引号,不能是单引号</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> [<span class="hljs-string">"executable"</span>,<span class="hljs-string">"param1"</span>,<span class="hljs-string">"param2"</span>...]</span>
+<span class="hljs-comment">#exec格式可以指定其它shell</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> [<span class="hljs-string">"/bin/bash"</span>,<span class="hljs-string">"-c"</span>,<span class="hljs-string">"echo hello wang"</span>]</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 多个命令通过 &amp;&amp; 操作符联合，为的是减少构建时的层数</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> yum -y install epel-release \
+    &amp;&amp; yum -y install nginx \
+    &amp;&amp; rm -rf /usr/share/nginx/html/*</span>
+    &amp;&amp; echo <span class="hljs-string">"&lt;h1&gt; docker test nginx &lt;/h1&gt;"</span> &gt; /usr/share/nginx/html/index.html</code></pre></div>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ul>
+<li>
+<p>shell格式命令，默认使用<code>/bin/sh</code>去解析，具有较多的限制性</p>
+</li>
+<li>
+<p>exec格式命令，可通过修改<code>第一个变量</code>为所需的<code>shell</code>进行命令那个解析</p>
+</li>
+<li>
+<p>命令执行没有上下文，如下执行是错误的</p>
+</li>
+</ul>
+<div><pre class="hljs"><code><span class="hljs-comment">#world.txt并不存放在/app内</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> <span class="hljs-built_in">cd</span> /app</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> <span class="hljs-built_in">echo</span> <span class="hljs-string">"hello"</span> &gt; world.txt</span>
+
+<span class="hljs-comment"># 应修改为</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> <span class="hljs-built_in">echo</span> <span class="hljs-string">"hello"</span> &gt; /app/world.txt</span></code></pre></div>
+<p>!!!</p>
+<h3 id="env">ENV</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>环境变量的设置</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-comment">#变量赋值格式1</span>
+<span class="hljs-comment">#此格式只能对一个key赋值,&lt;key&gt;之后的所有内容均会被视作其&lt;value&gt;的组成部分</span>
+<span class="hljs-keyword">ENV</span> &lt;key&gt; &lt;value&gt;
+
+<span class="hljs-comment">#变量赋值格式2</span>
+<span class="hljs-comment">#此格式可以支持多个key赋值,定义多个变量建议使用,减少镜像层</span>
+<span class="hljs-keyword">ENV</span> &lt;key1&gt;=&lt;value1&gt; &lt;key2&gt;=&lt;value2&gt;</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ol>
+<li>
+<p>配置应用程序参数</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">ENV</span> DATABASE_HOST=localhost
+<span class="hljs-keyword">ENV</span> DATABASE_PORT=<span class="hljs-number">5432</span>
+<span class="hljs-keyword">ENV</span> API_KEY=abc123</code></pre></div>
+</li>
+<li>
+<p>指定工作目录</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">ENV</span> APP_HOME=/app
+<span class="hljs-keyword">WORKDIR</span><span class="language-bash"> <span class="hljs-variable">$APP_HOME</span></span></code></pre></div>
+</li>
+<li>
+<p>设置语言环境</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">ENV</span> LANG=en_US.UTF-<span class="hljs-number">8</span>
+<span class="hljs-keyword">ENV</span> LC_ALL=en_US.UTF-<span class="hljs-number">8</span></code></pre></div>
+</li>
+<li>
+<p>传递构建参数</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">ARG</span> VERSION
+<span class="hljs-keyword">ENV</span> APP_VERSION=$VERSION</code></pre></div>
+</li>
+</ol>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ul>
+<li>ENV 可以定义环境变量和值</li>
+<li>能被后续指令(如:ENV,ADD,COPY,RUN等)通过$KEY或${KEY}<code>进行引用</code>，并在容器<code>运行时保持</code><div><pre class="hljs"><code><span class="hljs-keyword">FROM</span>  rockylinux:<span class="hljs-number">9.3</span> 
+<span class="hljs-keyword">LABEL</span><span class="language-bash"> maintainer=<span class="hljs-string">"alfiecheung &lt;root@alfiecheung.com&gt;"</span></span>
+<span class="hljs-keyword">ENV</span> name=<span class="hljs-string">"leslie"</span> age=<span class="hljs-number">20</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> <span class="hljs-built_in">echo</span> <span class="hljs-string">"<span class="hljs-variable">${name}</span>:<span class="hljs-variable">${age}</span>"</span> &gt; /tmp/test.txt</span>
+
+<span class="hljs-comment"># 通过运行容器，查看 /tmp/test.txt</span>
+<span class="hljs-comment"># docker run --rm rocky:env-test2 cat /tmp/test.txt</span>
+<span class="hljs-comment"># leslie:20</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<h3 id="copy">COPY</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>本地宿主机与容器之间文件的互相复制</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> [--chown=&lt;user&gt;:&lt;group&gt;] &lt;src&gt;... &lt;dest&gt;</span>
+<span class="hljs-keyword">COPY</span><span class="language-bash"> [--chown=&lt;user&gt;:&lt;group&gt;] [<span class="hljs-string">"&lt;src&gt;"</span>,... <span class="hljs-string">"&lt;dest&gt;"</span>] <span class="hljs-comment">#路径中有空白字符时,建议使用此格式</span></span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ol>
+<li>
+<p><strong>复制单个文件</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> source.txt /app/destination.txt</span></code></pre></div>
+<p>将主机上的 <code>source.txt</code> 文件复制到容器中的 <code>/app/destination.txt</code>。</p>
+</li>
+<li>
+<p><strong>复制整个目录</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> source_directory /app/destination_directory</span></code></pre></div>
+<p>将主机上的 <code>source_directory</code> 目录及其所有内容递归地复制到容器中的 <code>/app/destination_directory</code>。</p>
+</li>
+<li>
+<p><strong>复制多个文件</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> file1.txt file2.txt /app/</span></code></pre></div>
+<p>将主机上的 <code>file1.txt</code> 和 <code>file2.txt</code> 文件复制到容器中的 <code>/app/</code> 目录。</p>
+</li>
+<li>
+<p><strong>使用通配符复制多个文件</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> *.txt /app/</span></code></pre></div>
+<p>将主机上所有以 <code>.txt</code> 结尾的文件复制到容器中的 <code>/app/</code> 目录。</p>
+</li>
+<li>
+<p><strong>复制远程文件</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> https://example.com/file.txt /app/</span></code></pre></div>
+<p>从远程 URL 下载文件 <code>file.txt</code> 并复制到容器中的 <code>/app/</code> 目录。</p>
+</li>
+<li>
+<p><strong>复制文件并更改权限</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">COPY</span><span class="language-bash"> --chown=user:group source.txt /app/destination.txt</span></code></pre></div>
+<p>将主机上的 <code>source.txt</code> 文件复制到容器中的 <code>/app/destination.txt</code>，并将文件的所有者设置为 <code>user</code>，组设置为 <code>group</code>。</p>
+</li>
+<li>
+<p><strong>复制文件到特定构建阶段</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">FROM</span> builder as build
+<span class="hljs-keyword">COPY</span><span class="language-bash"> source.txt /app/destination.txt</span></code></pre></div>
+<p>在多阶段构建中，将 <code>source.txt</code> 文件从 <code>builder</code> 阶段复制到 <code>build</code> 阶段的容器中。<br />
+!!!</p>
+</li>
+</ol>
+<p>!!! warning 注意事项</p>
+<ul>
+<li><code>源文件路径</code>
+<ul>
+<li>COPY 命令的第一个参数是源文件或目录的路径。</li>
+<li>在指定路径时，可以是相对于 <code>Dockerfile</code> 所在目录的相对路径，也可以是一个<code>绝对路径</code>。</li>
+</ul>
+</li>
+<li><code>目标路径</code>
+<ul>
+<li>COPY 命令的第二个参数是目标路径，表示要将源文件或目录复制到容器中的位置。</li>
+<li>这个路径可以是容器内的绝对路径，也可以是相对于容器工作目录的路径。如果目标路径不存在，则会<code>自动创建</code>。</li>
+</ul>
+</li>
+<li><code>目录复制</code>
+<ul>
+<li>如果源路径是一个目录，COPY 命令将<code>递归地复制该目录及其所有内容</code>，但<code>不复制目录自身</code>。</li>
+<li>目标路径必须是一个已存在的目录，或者在构建过程中已经创建。</li>
+</ul>
+</li>
+<li><code>文件权限</code>
+<ul>
+<li>使用 COPY 命令复制文件时，文件的<code>权限将保持不变</code>。</li>
+<li>如果需要更改文件的权限，可以<code>使用 RUN 命令在 Dockerfile 中进行相应的权限</code>更改操作。</li>
+</ul>
+</li>
+<li><code>使用通配符</code>
+<ul>
+<li>COPY 命令支持使用通配符来复制多个文件。</li>
+<li>例如，<code>COPY *.txt /app/</code> 将复制所有以 <code>.txt</code> 结尾的文件到容器的 <code>/app/</code> 目录。</li>
+</ul>
+</li>
+<li><code>多个复制操作</code>
+<ul>
+<li>可以在 Dockerfile 中使用多个 COPY 命令来复制不同的文件或目录到容器中。</li>
+<li>这些复制操作将按照在 Dockerfile 中的顺序依次执行。</li>
+</ul>
+</li>
+<li><code>文件排除</code>
+<ul>
+<li>可以使用 <code>.dockerignore</code> 文件来排除不需要复制到镜像中的文件和目录。</li>
+<li><code>.dockerignore</code> 文件的格式类似于 .gitignore 文件，可以通过添加规则来过滤文件和目录。</li>
+</ul>
+</li>
+</ul>
+<p>!!!</p>
+<h3 id="add">ADD</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>支持将压缩文件进行复制解压</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-keyword">ADD</span><span class="language-bash"> [--chown=&lt;user&gt;:&lt;group&gt;] &lt;src&gt;... &lt;dest&gt;</span>
+<span class="hljs-keyword">ADD</span><span class="language-bash"> [--chown=&lt;user&gt;:&lt;group&gt;] [<span class="hljs-string">"&lt;src&gt;"</span>,... <span class="hljs-string">"&lt;dest&gt;"</span>]</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ul>
+<li>如果是一个 <code>URL</code> ，下载后的文件权限自动设置为 <code>600</code></li>
+<li>如果是一个本地文件系统上的打包文件,如: gz, bz2 ,xz ，它将被解包 ，其行为类似于"tar -x"命令, 但是<code>通过URL获取到的tar文件</code>将<code>不会自动展开</code><br />
+!!!</li>
+</ul>
+<h3 id="cmd">CMD</h3>
+<p><img src="/_resources/1e3b9a8514b142cf874428f42050682d.png" /><br />
+!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>设置容器启动时要执行的<code>默认命令</code></li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-comment"># 使用 exec 执行，推荐方式，第一个参数必须是命令的全路径,此种形式不支持环境变量</span>
+<span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">"executable"</span>,<span class="hljs-string">"param1"</span>,<span class="hljs-string">"param2"</span>]</span>
+
+<span class="hljs-comment"># 在 /bin/sh 中执行，提供给需要交互的应用；此种形式支持环境变量</span>
+<span class="hljs-keyword">CMD</span><span class="language-bash"> <span class="hljs-built_in">command</span> param1 param2</span>
+
+<span class="hljs-comment"># 提供给 ENTRYPOINT 命令的默认参数</span>
+<span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">"param1"</span>,<span class="hljs-string">"param2"</span>]</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ol>
+<li>
+<p><strong>执行单个命令</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">CMD</span><span class="language-bash"> <span class="hljs-built_in">echo</span> <span class="hljs-string">"Hello, Docker!"</span></span></code></pre></div>
+<p>在容器启动时执行 <code>echo "Hello, Docker!"</code> 命令。</p>
+</li>
+<li>
+<p><strong>执行可执行文件</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">CMD</span><span class="language-bash"> ./myapp</span></code></pre></div>
+<p>在容器启动时执行名为 <code>myapp</code> 的可执行文件。</p>
+</li>
+<li>
+<p><strong>指定命令和参数</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">"python"</span>, <span class="hljs-string">"app.py"</span>]</span></code></pre></div>
+<p>在容器启动时执行 <code>python app.py</code> 命令。</p>
+</li>
+<li>
+<p><strong>使用 Shell 执行命令</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">CMD</span><span class="language-bash"> bash -c <span class="hljs-string">"echo Welcome; echo to Docker"</span></span></code></pre></div>
+<p>在容器启动时使用 Shell 执行复杂的命令或命令序列。</p>
+</li>
+<li>
+<p><strong>覆盖 CMD</strong>:<br />
+在运行容器时，可以使用 <code>docker run</code> 命令的参数来覆盖 <code>CMD</code> 命令。例如：</p>
+<div><pre class="hljs"><code>docker run myimage echo "Hello, World!"</code></pre></div>
+<p>这将在容器运行时覆盖默认的 <code>CMD</code> 命令，并执行 <code>echo "Hello, World!"</code>。</p>
+</li>
+<li>
+<p><strong>作为ENTRYPOINT的参数</strong>:</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">ENTRYPOINT</span><span class="language-bash"> [<span class="hljs-string">"echo"</span>, <span class="hljs-string">"Hello,"</span>]</span>
+<span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">"Docker!"</span>]</span></code></pre></div>
+</li>
+</ol>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>作为默认执行命令
+<ul>
+<li><code>dockerfile</code> 里面没有<code>ENTRYPOINT命令</code> 且 <code>docker run</code>没有指定执行命令时</li>
+</ul>
+</li>
+<li>最有最后一条生效
+<ul>
+<li>如果在<code>dockerfile</code> 中添加多个 <code>CMD</code>命令，后添加的<code>CMD</code>命令将覆盖前面添加的</li>
+</ul>
+</li>
+<li>可以被替换
+<ul>
+<li><code>docker run</code>运行容器的过程中，可以指定<code>需要执行的命令</code>，这个命令将替代<code>dockerfile CMD</code>命令<br />
+!!!</li>
+</ul>
+</li>
+</ol>
+<h3 id="entrypoint">ENTRYPOINT</h3>
+<p><img src="/_resources/29ff5ff778c24015b5cffb4ccd8033ee.png" /><br />
+!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>用于指定在容器启动时要<code>执行的可执行命令或脚本</code>。</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-comment"># 使用 exec 执行</span>
+<span class="hljs-keyword">ENTRYPOINT</span><span class="language-bash"> [<span class="hljs-string">"executable"</span>, <span class="hljs-string">"param1"</span>, <span class="hljs-string">"param2"</span>...]</span>
+<span class="hljs-comment"># shell中执行</span>
+<span class="hljs-keyword">ENTRYPOINT</span><span class="language-bash"> <span class="hljs-built_in">command</span> param1 param2</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>
+<p>运行环境配置</p>
+<div><pre class="hljs"><code><span class="hljs-keyword">FROM</span>  rockylinux:<span class="hljs-number">9.3</span>
+<span class="hljs-keyword">LABEL</span><span class="language-bash"> maintainer=<span class="hljs-string">"alfiecheung &lt;root@alfiecheung.com&gt;"</span></span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> sed -e <span class="hljs-string">'s|^mirrorlist=|#mirrorlist=|g'</span> \
+    -e <span class="hljs-string">'s|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g'</span> \
+    -i.bak /etc/yum.repos.d/rocky-*.repo </span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> dnf install -y nginx &amp;&amp;  rm -rf /var/cache/dnf/*</span>
+
+<span class="hljs-keyword">COPY</span><span class="language-bash"> entry.sh /tmp</span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> chmod a+x /tmp/entry.sh</span>
+
+<span class="hljs-keyword">ENTRYPOINT</span><span class="language-bash"> [<span class="hljs-string">"/tmp/entry.sh"</span>]</span>
+<span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">"nginx"</span>, <span class="hljs-string">"-g"</span>, <span class="hljs-string">"daemon off;"</span>]</span></code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-meta">#!/bin/sh</span>
+<span class="hljs-comment"># 创建nginx配置文件</span>
+<span class="hljs-comment"># 变量可以使用默认变量值（即 :- 后的内容）</span>
+<span class="hljs-comment"># 或通过 ENV / docker run -e 提供变量内容进行覆盖</span>
+cat &gt; /etc/nginx/conf.d/custome.conf &lt;&lt;<span class="hljs-string">EOF
+server {
+  server_name ${HOSTNAME:-"wwww.alopex.com"};
+  listen ${IP:-"0.0.0.0"}:${PORT:-8080};
+  root ${DOC_ROOT:-"/usr/share/nginx/html"};
+}
+EOF</span>
+
+<span class="hljs-comment"># 创建目录</span>
+mkdir -p <span class="hljs-variable">${DOC_ROOT:-/usr/share/nginx/html}</span>
+
+<span class="hljs-comment"># 自定义主页</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-variable">${HOSTNAME:-"www.alopex.com"}</span> &gt; <span class="hljs-variable">${DOC_ROOT:-/usr/share/nginx/html}</span>/index.html
+
+<span class="hljs-comment"># 通过exec接受CMD“参数”/ docker run “命令”</span>
+<span class="hljs-comment"># 由于exec 内建命令可替换当前shell，因此首命令可由用户指定需要执行的命令，而不仅仅只是参数传递</span>
+<span class="hljs-comment"># 提高了脚本的灵活性，是一个约定成俗的操作</span>
+<span class="hljs-built_in">exec</span> <span class="hljs-string">"<span class="hljs-variable">$@</span>"</span></code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-comment"># 创建镜像</span>
+docker build -t rocky-nginx:entry-v2 .
+
+<span class="hljs-comment"># 启动容器</span>
+<span class="hljs-comment">## 自定义hostname和port变量，能够在配置中修改</span>
+docker run -d -e PORT=9090 \
+-e HOSTNAME=<span class="hljs-string">"www.leslie.com"</span> \
+-e DOC_ROOT=<span class="hljs-string">"/tmp/cc"</span> rocky-nginx:entry-v2
+
+<span class="hljs-comment"># 测试容器</span>
+curl ip.ip.ip.ip:9090</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>ENTRYPOINT接收docker run参数
+<ul>
+<li><code>docker run</code>提供的命令无法替换<code>ENTRYPOINT</code>，相反该命令将作为参数传递给<code>ENTRYPOINT</code></li>
+<li>参数优先级
+<ul>
+<li><code>docker run</code></li>
+<li><code>CMD</code></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>最有最后一条生效
+<ul>
+<li>如果在<code>dockerfile</code> 中添加多个 <code>ENTRYPOINT</code>命令，后添加的<code>ENTRYPOINT</code>命令将覆盖前面添加的<br />
+!!!</li>
+</ul>
+</li>
+</ol>
+<h3 id="arg">ARG</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>Build 阶段指定变量</li>
+</ul>
+</li>
+<li>格式
+<ul>
+<li>ARG &lt;name&gt;[=&lt;default value&gt;]<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>与FROM结合，在构建时始终使用追新的images<div><pre class="hljs"><code><span class="hljs-keyword">ARG</span> CODE_VERSION=latest
+<span class="hljs-keyword">FROM</span> base:${CODE_VERSION}</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ul>
+<li>唯一可以放置在<code>FROM</code>命令前的指令</li>
+<li>ARG指令在build 阶段指定变量</li>
+<li>和ENV不同的是，容器运行时并不存在ARG定义的环境变量</li>
+<li>可以用 docker build --build-arg &lt;参数名&gt;=&lt;值&gt; 来覆盖<br />
+!!!</li>
+</ul>
+<h3 id="volume">VOLUME</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>创建匿名卷</li>
+<li>容器删除后默认将删除容器内数据，匿名卷是数据持久话的一个实现手段</li>
+<li>持久化可以使得容器在删除后，挂载的匿名卷目录将继续保留</li>
+<li>更多详细内容 <a>0x06 docker/存储管理</a></li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-keyword">VOLUME</span><span class="language-bash"> &lt;容器内路径&gt;</span>
+<span class="hljs-keyword">VOLUME</span><span class="language-bash"> [<span class="hljs-string">"&lt;容器内路径1&gt;"</span>, <span class="hljs-string">"&lt;容器内路径2&gt;"</span>...]</span>
+注意:
+&lt;容器内路径&gt;如果在容器内不存在,在创建容器时会自动创建
+&lt;容器内路径&gt;如果是存在的,同时目录内有内容,将会把此目录的内容复制到宿主机的实际目录</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>挂载两个匿名卷
+<ul>
+<li>VOLUME [ "/data1","/data2" ]<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>匿名卷默认路径<code>/var/lib/docker/volumes</code></li>
+<li>数据存储目录 <code>/var/lib/docker/volumes/&lt;container-id&gt;/_data</code></li>
+<li>匿名卷创建宿主机和镜像都<code>不需要要事先存在真实目录</code></li>
+<li>挂载的匿名卷目录将在容器内自动创建</li>
+<li>匿名卷无有效名称虽然<code>可保留数据</code>但<code>复用性不强</code>，容器删除后难以获取卷名称 (即数据保留的匿名卷)
+<ul>
+<li>容器挂载卷名称获取: <code>docker inspect --format '{{range .Mounts}}{{.Name}}{{end}}' &lt;container-id&gt;</code></li>
+<li>名称例子：<code>9bcb9d85be8480d83e31ba6f08ba08c5669220c424a6313b318b2850e24353ba</code><br />
+!!!</li>
+</ul>
+</li>
+</ol>
+<h3 id="expose">EXPOSE</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>用于启动容器时，端口暴露的标识</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-keyword">EXPOSE</span> &lt;port&gt;[/ &lt;protocol&gt;] [&lt;port&gt;[/ &lt;protocol&gt;] ..]</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>暴露特定端口和协议
+<ul>
+<li>EXPOSE 11211/udp 11211/tcp<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>EXPOSE仅仅只是一个便捷标识，并不意味这容器就使用其暴露的端口</li>
+<li>EXPOSE主要是和<code>—P</code>临时端口映射配合使用，使用端口并非一定需要通过该语句暴露，也可以使用<code>-p host-port:container-port</code><br />
+!!!</li>
+</ol>
+<h3 id="workdir">WORKDIR</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>指定工作目录</li>
+<li>为后续的 <code>RUN, CMD, ENTRYPOINT</code> 指令配置工作目录，当容器运行后，进入容器内WORKDIR指定的默认目录</li>
+</ul>
+</li>
+<li>格式
+<ul>
+<li></li>
+</ul>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>指定当前的工作目录
+<ul>
+<li>WORKDIR /path/to/workdir<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>指定存在的<code>workdir</code>将会被自动创建</li>
+<li>在RUN可以生效,在CMD、ENTRYPOINT可能会有问题<br />
+!!!</li>
+</ol>
+<h3 id="onbuild">ONBUILD</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>子镜像调用父镜像是执行的命令</li>
+</ul>
+</li>
+<li>格式
+<ul>
+<li>ONBUILD [INSTRUCTION]<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>通过该父镜像创建的子镜像都需要打上标签
+<ul>
+<li>ONBUILD RUN echo "alopex copyright C" &gt; /etc/parent-os<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>ONBUILD不能自我能套，且不会触发FROM和MAINTAINER指令</li>
+<li>推荐在标签中注明，例如 <code>ruby:1.9-onbuild</code></li>
+<li>ONBUILD命令只能实现单次传递(直接继承的子代)，不会持续传递(间接继承的子代)<br />
+!!!</li>
+</ol>
+<h3 id="user">USER</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>指定默认的容器运行用户名称或UID</li>
+<li>后续dockerfile中的 RUN ，CMD和ENTRYPOINT指令时使用此用户</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-keyword">USER</span> &lt;<span class="hljs-keyword">user</span>&gt;[:&lt;group&gt;]
+<span class="hljs-keyword">USER</span> &lt;UID&gt;[:&lt;GID&gt;]</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>为数据库用户创建<code>musql</code>用户<div><pre class="hljs"><code><span class="hljs-keyword">RUN</span><span class="language-bash"> groupadd -r mysql &amp;&amp; useradd -r -g mysql mysql</span>
+<span class="hljs-keyword">USER</span> mysql</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<p>!!!</p>
+<h3 id="healthcheck">HEALTHCHECK</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>容器启动后的状态检测，确认容器是否按照预订要求运行</li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code><span class="hljs-keyword">HEALTHCHECK</span><span class="language-bash"> [选项] CMD &lt;命令&gt; <span class="hljs-comment">#设置检查容器健康状况的命令,如果命令执行失败,则返回1,即 unhealthy</span></span>
+<span class="hljs-keyword">HEALTHCHECK</span><span class="language-bash"> NONE <span class="hljs-comment">#如果基础镜像有健康检查指令，使用这行可以屏蔽掉其健康检查指令</span></span>
+
+<span class="hljs-keyword">HEALTHCHECK</span><span class="language-bash"> 支持下列选项:</span>
+--interval=&lt;间隔&gt; <span class="hljs-comment">#两次健康检查的间隔，默认为 30 秒</span>
+--timeout=&lt;时长&gt; <span class="hljs-comment">#健康检查命令运行超时时间，如果超过这个时间，本次健康检查就被视为失败，默认 30 秒</span>
+--retries=&lt;次数&gt; <span class="hljs-comment">#当连续失败指定次数后，则将容器状态视为 unhealthy，默认3次</span>
+--start-period=&lt;FDURATION&gt; <span class="hljs-comment">#default: 0s </span>
+
+<span class="hljs-comment">#检查结果返回值:</span>
+<span class="hljs-number">0</span>  <span class="hljs-comment">#success the container is healthy and ready for use</span>
+<span class="hljs-number">1</span>  <span class="hljs-comment">#unhealthythe container is not working correctly</span>
+<span class="hljs-number">2</span>  <span class="hljs-comment">#reserveddo not use this exit code</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<ul>
+<li>检测80请求是否正常<div><pre class="hljs"><code><span class="hljs-keyword">HEALTHCHECK</span><span class="language-bash"> --interval=5s --timeout=3s CMD curl -fs http://127.0.0.1:90/</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ol>
+<li>healthcheck 是认为设定检测规则，unhealthy表示检测状态异常但不代表容器服务不可用</li>
+<li>对于启动时间较长的容器，建起增大<code>timeout</code>时间</li>
+<li>容器检查会造成额外的内部资源消耗<br />
+!!!</li>
+</ol>
+<h3 id="dockerignore-文件">.dockerignore 文件</h3>
+<p>!!!  note 基本信息</p>
+<ul>
+<li>用途
+<ul>
+<li>生成构建上下文时Docker客户端<code>忽略指定模式文件和文件夹</code></li>
+</ul>
+</li>
+<li>格式<div><pre class="hljs"><code>#	#以#开头的行为注释
+*	#匹配任何非分隔符字符序列
+?	#匹配任何单个非分隔符
+\\	#表示
+**	#匹配任意数量的目录（包括零）例如，**<span class="hljs-comment">/*.go将排除在所有目录中以.go结尾的所有文件，包括构建上下文的根。
+!	#表示取反，可用于排除例外情况</span></code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<p>!!! tip 常见用法</p>
+<div><pre class="hljs"><code><span class="hljs-comment">#排除 test 目录下的所有文件</span>
+test/*
+<span class="hljs-comment">#排除 md 目录下的 xttblog.md 文件</span>
+md/xttblog.md
+<span class="hljs-comment">#排除 xttblog 目录下的所有 .md 的文件</span>
+xttblog/*<span class="hljs-string">.md</span>
+<span class="hljs-comment">#排除以 xttblog 为前缀的文件和文件夹</span>
+xttblog?
+<span class="hljs-comment">#排除所有目录下的 .sql 文件夹</span>
+**/*<span class="hljs-string">.sql</span></code></pre></div>
+<p>!!!</p>
+<p>!!! warning 注意事项</p>
+<ul>
+<li>通过创建<code>.dockerignore</code>文件实现<br />
+!!!</li>
+</ul>
+<h1 id="docker-网络模式">Docker 网络模式</h1>
+<h2 id="默认网络">默认网络.</h2>
+<h3 id="容器间通信">容器间通信</h3>
+<ul>
+<li>容器之间默认互联互通，使用参数<code>--icc=true</code></li>
+<li>修改容器之间不互联互通
+<ul>
+<li>启动文件修改 <code>/usr/lib/systemd/system/docker.service</code>
+<ul>
+<li><code>ExecStart=usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock --icc=false</code></li>
+<li><code>systemctl daemon-reload &amp;&amp; systemctl restart docker</code></li>
+</ul>
+</li>
+<li>配置文件修改 <code>/etc/docker/daemon.json</code><div><pre class="hljs"><code><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">"icc"</span><span class="hljs-punctuation">:</span> <span class="hljs-keyword">false</span>
+<span class="hljs-punctuation">}</span></code></pre></div>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="自定义ip段">自定义IP段</h3>
+<ul>
+<li>默认IP段：<code>172.17.0.1/16</code></li>
+<li>查看默认网段
+<ul>
+<li>
+<p>ip addr show docker0<br />
+<img src="/_resources/26cb8497733d45a2a3aaaac0963c73c0.png" /></p>
+</li>
+<li>
+<p>docker network inspect &lt;bridge-name&gt;</p>
+</li>
+</ul>
+</li>
+<li>修改方式
+<ul>
+<li>启动文件修改 <code>/usr/lib/systemd/system/docker.service</code>
+<ul>
+<li><code>ExecStart=usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock --bip=192.168.100.1/24</code></li>
+<li><code>systemctl daemon-reload &amp;&amp; systemctl restart docker</code></li>
+</ul>
+</li>
+<li>配置文件修改 <code>/etc/docker/daemon.json</code><div><pre class="hljs"><code><span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">"bip"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"192.168.100.1/24"</span>
+<span class="hljs-punctuation">}</span></code></pre></div>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="自定义网桥">自定义网桥</h3>
+<ul>
+<li>默认网桥名称：<code>docker0</code></li>
+<li>内容查看
+<ul>
+<li><code>brctl show</code><br />
+<img src="/_resources/59bf014a22f74b0cb1236fb62e0f58e3.png" /></li>
+</ul>
+</li>
+<li>自定义网桥<div><pre class="hljs"><code><span class="hljs-comment"># 自定义网桥 my-br0</span>
+brctl addbr my-br0 
+
+<span class="hljs-comment"># 为网桥设定IP地址段 192.168.100.1/24</span>
+ip a a 192.168.100.1/24 dev my-br0</code></pre></div>
+</li>
+<li>默认网桥修改
+<ul>
+<li>配置文件 ``</li>
+<li>启动文件 <code>/lib/systemd/system/docker.service</code>
+<ul>
+<li><code>ExecStart=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock -b my-br0</code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="容器间互联">容器间互联</h3>
+<blockquote>
+<p>让数据库和wordpress两个容器实现互联</p>
+</blockquote>
+<p>!!! info  互联方式</p>
+<ul>
+<li>
+<p>环境准备</p>
+<div><pre class="hljs"><code>mkdir -p /tmp/cc/lamp_docker/mysql
+mkdir -p /tmp/cc/{mysql,wordpress}
+
+cat &gt; lamp_docker/env_mysql.list &lt;&lt;EOF
+<span class="hljs-attribute">MYSQL_ROOT_PASSWORD</span>=alopex
+<span class="hljs-attribute">MYSQL_DATABASE</span>=wordpress
+<span class="hljs-attribute">MYSQL_USER</span>=wpuser
+<span class="hljs-attribute">MYSQL_PASSWORD</span>=alopex
+EOF
+
+cat &gt; lamp_docker/env_wordpress.list &lt;&lt;EOF
+<span class="hljs-attribute">WORDPRESS_DB_HOST</span>=mysql:3306  # 此处 mysql为容器名称，将被接写为IP地址在（/etc/hosts中被定义）
+<span class="hljs-attribute">WORDPRESS_DB_NAME</span>=wordpress
+<span class="hljs-attribute">WORDPRESS_DB_USER</span>=wpuser
+<span class="hljs-attribute">WORDPRESS_DB_PASSWORD</span>=alopex
+<span class="hljs-attribute">WORDPRESS_TABLE_PREFIX</span>=wp_
+EOF
+
+cat &gt; lamp_docker/mysql/mysql_test.cnf &lt;&lt;EOF
+[mysqld]
+<span class="hljs-attribute">server-id</span>=100
+<span class="hljs-attribute">log-bin</span>=mysql-bin
+EOF
+
+tree /tmp/cc/
+/tmp/cc/
+├── lamp_docker
+│   ├── env_mysql.list
+│   ├── env_wordpress.list
+│   └── mysql
+│       └── mysql_test.cnf
+├── mysql
+└── wordpress
+
+3 directories, 3 files</code></pre></div>
+</li>
+<li>
+<p>名称互联</p>
+<ul>
+<li>
+<p>使用<code>--link</code>选项实现容器名称的引用</p>
+</li>
+<li>
+<p>其本质为在容器内的/etc/hosts中添加<code>--link</code>后指定的容器的IP和主机名的对应关系，从而实现名称解析</p>
+</li>
+<li>
+<p>格式</p>
+<div><pre class="hljs"><code>--link list   <span class="hljs-comment">#Add link to another container</span>
+
+格式:
+docker <span class="hljs-keyword">run</span><span class="language-bash"> --name &lt;容器名称&gt;    <span class="hljs-comment">#先创建指定名称的容器</span></span>
+docker <span class="hljs-keyword">run</span><span class="language-bash"> --link &lt;目标通信的容器ID或容器名称&gt;  <span class="hljs-comment">#再创建容器时引用上面容器的名称</span></span></code></pre></div>
+</li>
+<li>
+<p>例子</p>
+<div><pre class="hljs"><code>docker run --name mysql \
+-d -p 3306:3306 \
+-v /tmp/cc/mysql:/var/lib/mysql \
+-v /tmp/cc/lamp_docker/mysql/:/etc/mysql/conf.d  \
+--env-file=/tmp/cc/lamp_docker/env_mysql.list \
+mysql:8.0
+
+<span class="hljs-comment"># 前端容器使用名称互联连接到mysql，</span>
+<span class="hljs-comment"># 当前端需要访问mysql时，可通过其名称（mysql）访问，解决IP漂移问题</span>
+docker run --name wordpress \
+-d -p 80:80 \
+--link mysql \
+-v /tmp/cc/wordpress:/var/www/html/wp-content \
+--env-file=/tmp/cc/lamp_docker/env_wordpress.list \
+wordpress:php7.4-apache </code></pre></div>
+<p><img src="/_resources/c5989b06e70840ad99950201ecb99523.png" /><br />
+由于配置已经在容器阶段完成，因此登录页面填写好信息后，即会跳转到登录页面<br />
+<img src="/_resources/fdc13c08e63a46c59ba09c844c832822.png" /></p>
+</li>
+</ul>
+</li>
+<li>
+<p>别名互联</p>
+<ul>
+<li>
+<p>容器名称是自身的一个特性，容器可对其进行修改，因此具备不稳定性</p>
+</li>
+<li>
+<p>客户容器如果需要调用容器，应该为其配置一个别名</p>
+</li>
+<li>
+<p>这样可以保证<code>被引用容器</code>修改名称时，不影响<code>调用容器</code>对被引容器名称的继续使用</p>
+</li>
+<li>
+<p>格式</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 先创建指定名称的容器</span>
+docker <span class="hljs-keyword">run</span><span class="language-bash"> --name &lt;容器名称&gt;</span>
+
+<span class="hljs-comment">#给上面创建的容器起别名,来创建新容器</span>
+docker <span class="hljs-keyword">run</span><span class="language-bash"> --name &lt;容器名称&gt; --link &lt;目标容器名称&gt;:<span class="hljs-string">"&lt;容器别名1&gt; &lt;容器别名2&gt; ..."</span></span></code></pre></div>
+</li>
+<li>
+<p>实例</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 创建容器A，别名为 demo</span>
+docker <span class="hljs-built_in">run</span> -d --name demo rocky:demo tail -f /etc/hosts
+
+<span class="hljs-comment"># 创建容器B，关联容器A的别名 (A的别名为 my-demo)</span>
+docker <span class="hljs-built_in">run</span> -d --name<span class="hljs-built_in"> client </span>--link demo:<span class="hljs-string">"my-demo"</span> rocky:demo tail -f /etc/hosts
+
+<span class="hljs-comment"># 查看容器B上的hosts</span>
+docker exec<span class="hljs-built_in"> client </span>cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.17.0.2	my-demo 1330796cbbdc demo
+172.17.0.3	474584380ed6
+
+<span class="hljs-comment"># 修改容器A的名称 为 new-demo</span>
+docker rename demo new-demo
+
+<span class="hljs-comment"># 容器B ping 容器A别名 my-demo 依然生效</span>
+docker exec -it<span class="hljs-built_in"> client </span>/bin/bash<span class="hljs-built_in">
+ping </span>my-demo<span class="hljs-built_in">
+PING </span>my-demo (172.17.0.2) 56(84) bytes of data.
+64 bytes <span class="hljs-keyword">from</span> my-demo (172.17.0.2): <span class="hljs-attribute">icmp_seq</span>=1 <span class="hljs-attribute">ttl</span>=64 <span class="hljs-attribute">time</span>=0.160 ms
+64 bytes <span class="hljs-keyword">from</span> my-demo (172.17.0.2): <span class="hljs-attribute">icmp_seq</span>=2 <span class="hljs-attribute">ttl</span>=64 <span class="hljs-attribute">time</span>=0.108 ms
+<span class="hljs-built_in">..</span>.</code></pre></div>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!!</p>
+<h2 id="网络连接模式">网络连接模式.</h2>
+<p><img src="/_resources/d1f3086b136b462d9d7c5b70082f6c4b.png" /></p>
+<ul>
+<li>模式语法<br />
+<img src="/_resources/3c4b68ee7b5d4be19c9aa14679e1580b.png" /><div><pre class="hljs"><code>docker run --network &lt;mode&gt;
+docker run --net=&lt;mode&gt;
+&lt;mode&gt;:
+    none
+    bridge
+    host
+    container:&lt;容器名或容器ID&gt;
+    &lt;自定义网络名称&gt;</code></pre></div>
+</li>
+</ul>
+<h3 id="bridge-桥接模式">Bridge (桥接模式)</h3>
+<p><img src="/_resources/75fdbfd2063e41efa480a49adbc28f72.png" /></p>
+<p>!!! tip 场景说明</p>
+<ul>
+<li>
+<p>语法声明</p>
+<ul>
+<li>docker  run --network= [docker0 | my-bridge] ...</li>
+</ul>
+</li>
+<li>
+<p>工作方式</p>
+<ul>
+<li>宿主机上创建默认的桥接器<code>docker0</code>，创建容器时将为<code>容器</code>创建<code>veth</code>并将该接口关联至<code>桥接器上</code></li>
+<li><img src="/_resources/bf0a79c8186a42ff8631cbbfcd94e2a5.png" /></li>
+</ul>
+</li>
+<li>
+<p>配置查看</p>
+<ul>
+<li><img src="/_resources/0e2015e10b614871afdcec09bcb3ed30.png" /></li>
+</ul>
+</li>
+<li>
+<p>本质</p>
+<ul>
+<li>
+<p>通过启用<code>ipforward</code>实现包在主机内转发</p>
+<ul>
+<li>cat /proc/sys/net/ipv4/ip_forward</li>
+</ul>
+</li>
+<li>
+<p>通过<code>iptables NAT chain</code> 对<code>docker0</code>网段IP进行<code>SNAT</code>实现与外部网络通信</p>
+</li>
+<li>
+<p>实例说明，<code>nginx</code>容器内开启<code>80</code>端口，且使用宿主机<code>49153</code>端口</p>
+<div><pre class="hljs"><code>docker port dazzling_margulis
+<span class="hljs-number">80</span><span class="hljs-operator">/</span>tcp <span class="hljs-operator">-&gt;</span> <span class="hljs-number">0.0</span>.0.0<span class="hljs-operator">:</span><span class="hljs-number">49153</span>
+<span class="hljs-number">80</span><span class="hljs-operator">/</span>tcp <span class="hljs-operator">-&gt;</span> <span class="hljs-operator">:::</span><span class="hljs-number">49153</span></code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-comment"># PREROUTING 的 NAT 表转发</span>
+<span class="hljs-comment"># 目的地址是本机的数据包，都转发给 DOCKER 链处理</span>
+sudo iptables -t nat -nL PREROUTING
+Chain PREROUTING (policy ACCEPT)
+target     prot opt <span class="hljs-built_in">source</span>               destination         
+DOCKER     all  --  0.0.0.0/0            0.0.0.0/0            ADDRTYPE match dst-type LOCAL
+
+<span class="hljs-comment"># DOCKER 链的内容</span>
+<span class="hljs-comment"># RETURN 规则：对于不匹配任何其他规则的数据包，应该立即返回到调用链的上一级</span>
+<span class="hljs-comment"># DNAT 规则: 对于匹配 tcp协议目的端口 49153 的流量，转发到 172.17.0.2 主机的 80 端口</span>
+sudo iptables -t nat -L DOCKER
+Chain DOCKER (2 references)
+target     prot opt <span class="hljs-built_in">source</span>               destination         
+RETURN     all  --  anywhere             anywhere            
+DNAT       tcp  --  anywhere             anywhere             tcp dpt:49153 to:172.17.0.2:80
+
+<span class="hljs-comment"># MASQUERADE 改写包来源 IP 为防火墙 网卡 IP</span>
+<span class="hljs-comment"># 功能与 SNAT 略有不同，当进行 IP 伪装时，不需指定要伪装成哪个 IP，IP 会从网卡直接读取</span>
+sudo iptables -t nat -nvL POSTROUTING | column -t  | awk <span class="hljs-string">'NR &gt;1 {print}'</span>
+pkts   bytes        target      prot    opt   <span class="hljs-keyword">in</span>        out       <span class="hljs-built_in">source</span>         destination       
+0      0            MASQUERADE  all     --    *         !docker0  172.17.0.0/16  0.0.0.0/0         
+0      0            MASQUERADE  tcp     --    *         *         172.17.0.2     172.17.0.2   tcp  dpt:80
+
+<span class="hljs-comment"># 查看路由表</span>
+<span class="hljs-comment"># 对于172.17.0.0网段，通过docker0接口访问</span>
+route  -n | column -t | awk <span class="hljs-string">'NR &gt;1 {print}'</span>
+Destination   Gateway         Genmask        Flags  Metric  Ref  Use  Iface
+0.0.0.0       172.16.102.254  0.0.0.0        UG     600     0    0    wlp5s0
+169.254.0.0   0.0.0.0         255.255.0.0    U      1000    0    0    wlp5s0
+172.16.102.0  0.0.0.0         255.255.255.0  U      600     0    0    wlp5s0
+172.17.0.0    0.0.0.0         255.255.0.0    U      0       0    0    docker0</code></pre></div>
+</li>
+</ul>
+</li>
+<li>
+<p>配置参数</p>
+<div><pre class="hljs"><code><span class="hljs-punctuation">{</span>
+<span class="hljs-attr">"hosts"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">"tcp://0.0.0.0:2375"</span><span class="hljs-punctuation">,</span> <span class="hljs-string">"fd://"</span><span class="hljs-punctuation">]</span><span class="hljs-punctuation">,</span>
+<span class="hljs-attr">"bip"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"192.168.100.100/24"</span><span class="hljs-punctuation">,</span>        #分配docker0网卡的IP
+<span class="hljs-attr">"fixed-cidr"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"192.168.100.128/26"</span><span class="hljs-punctuation">,</span> #分配容器IP范围<span class="hljs-punctuation">,</span><span class="hljs-number">26</span>不是容器IP的子网掩码<span class="hljs-punctuation">,</span>只表示地址范围
+<span class="hljs-attr">"fixed-cidr-v6"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"2001:db8::/64"</span><span class="hljs-punctuation">,</span>
+<span class="hljs-attr">"mtu"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">1500</span><span class="hljs-punctuation">,</span>
+<span class="hljs-attr">"default-gateway"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"192.168.100.200"</span><span class="hljs-punctuation">,</span> #网关必须和bip在同一个网段
+<span class="hljs-attr">"default-gateway-v6"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"2001:db8:abcd::89"</span><span class="hljs-punctuation">,</span>
+<span class="hljs-attr">"dns"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span> <span class="hljs-string">"1.1.1.1"</span><span class="hljs-punctuation">,</span> <span class="hljs-string">"8.8.8.8"</span><span class="hljs-punctuation">]</span>
+<span class="hljs-punctuation">}</span></code></pre></div>
+</li>
+<li>
+<p>通信</p>
+<ul>
+<li>内网 (默认可达)
+<ul>
+<li>容器间通信由网桥的<code>icc</code>参数决定
+<ul>
+<li><code>"com.docker.network.bridge.enable_icc": "true"</code></li>
+</ul>
+</li>
+<li>宿主机与容器的联通性由<code>bridge</code>的路由决定</li>
+</ul>
+</li>
+<li>外网 (默认可达)
+<ul>
+<li>外网的通信由 <code>iptable 的 SNAT</code>规则决定</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>特点</p>
+<ul>
+<li>缺省<code>默认配置</code>: 容器默认自动获取172.17.0.0/16的IP地址，此地址可以修改</li>
+<li>可<code>访问外网</code>: 利用宿主机的物理网卡，SNAT连接外网</li>
+<li>外部主机无法直接访问容器: 可以通过<code>配置DNAT</code>接受外网的访问</li>
+<li>低性能较低: 通过<code>NAT转换</code>有转换消耗</li>
+<li>端口管理繁琐: 每个容器必须手动指定唯一的端口容器产生端口冲容</li>
+</ul>
+</li>
+<li>
+<p>小结</p>
+<ul>
+<li><code>Bridge (桥接)</code>是默认网络链接模式，可实现内网和外网的通信</li>
+<li>适用于希望<code>容器之间相互通信</code>，并且<code>与外部网络隔离</code>的场景<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<h3 id="host-主机模式">Host (主机模式)</h3>
+<p><img src="/_resources/8a4e16a8317c419695697a8c6371e1bb.png" /></p>
+<p>!!! tip 场景说明</p>
+<ul>
+<li>语法声明
+<ul>
+<li>docker  run --network=host ...</li>
+</ul>
+</li>
+<li>工作方式
+<ul>
+<li>共享网络资源，访问主机地址即访问容器</li>
+</ul>
+</li>
+<li>配置查看<br />
+<img src="/_resources/d781b3ae10384dec83e6db69645e327e.png" /></li>
+<li>本质
+<ul>
+<li>与<code>宿主机</code>共享网络地址、端口等信息，即不对容器进行<code>网络命名空间资源</code>进行隔离</li>
+</ul>
+</li>
+<li>通信
+<ul>
+<li>内网 (无)</li>
+<li>外网
+<ul>
+<li>跨主机间通信，只要能与<code>宿主机</code>通信即可访问容器</li>
+<li><code>宿主机</code>可访问外网的前提下，容器可访问外网</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>特点
+<ul>
+<li>使用参数 <code>--network host</code> 指定</li>
+<li>共享宿主机网络，各容器网络无隔离</li>
+<li>网络性能无损耗</li>
+<li>网络故障排除相对简单</li>
+<li>容易产生<code>端口冲突</code></li>
+<li>网络资源无法分别统计</li>
+<li><code>不支持端口映射</code></li>
+</ul>
+</li>
+<li>小结
+<ul>
+<li>适用于希望容器<code>直接使用主机网络栈</code>，与<code>主机共享网络</code>的场景<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<h3 id="none-无网络">none (无网络)</h3>
+<p>!!! tip 场景说明</p>
+<ul>
+<li>语法声明
+<ul>
+<li>docker  run --network=none ...</li>
+</ul>
+</li>
+<li>工作方式
+<ul>
+<li>将容器置于一个<code>隔离的网络环境</code>中，该环境没有任何网络连接。</li>
+</ul>
+</li>
+<li>内容查看<br />
+<img src="/_resources/88d81efb15ca4c7f8b918c8b28f0e0a0.png" /></li>
+<li>本质
+<ul>
+<li>在容器运行时<code>禁用容器的网络功能</code>，使得容器<code>无法进行网络通信</code>。</li>
+</ul>
+</li>
+<li>通信
+<ul>
+<li>内网 (无)</li>
+<li>外网 (无)</li>
+</ul>
+</li>
+<li>特点
+<ul>
+<li>使用参数 <code>--network none</code> 指定</li>
+<li>默认无网络功能，<code>无法和外部通信</code></li>
+<li>无法实现<code>端口映射</code></li>
+<li>适用于<code>测试环境</code></li>
+</ul>
+</li>
+<li>小结
+<ul>
+<li>适用于<code>不需要网络连接</code>的容器，用于<code>隔离容器与网络的场景</code>。<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<h3 id="container-容器网络">container (容器网络)</h3>
+<p><img src="/_resources/0507f22f84d9468fa79c31c55976bc39.png" /></p>
+<p>!!! tip 场景说明</p>
+<ul>
+<li>语法声明
+<ul>
+<li>docker  run --net=container:mycontainer ...</li>
+</ul>
+</li>
+<li>工作方式
+<ul>
+<li>创建容器时，需要关联指定容器，并与该容器<code>共享网络资源</code></li>
+<li>端口<code>不能和被指定容器的端口冲突</code>，除了网络之外的文件系统、进程信息等仍然保持相互隔离</li>
+<li>两个容器的进程可以通过<code>lo网卡</code>进行通信</li>
+</ul>
+</li>
+<li>本质
+<ul>
+<li>新建的容器与<code>被指定的容器</code>网络资源共享，其他<code>NS</code>资源保持独立</li>
+</ul>
+</li>
+<li>通信
+<ul>
+<li>内网 (与关联容器保持一致)</li>
+<li>外网 (与关联容器保持一致)</li>
+</ul>
+</li>
+<li>特点
+<ul>
+<li>使用参数 <code>--network container:名称</code>或<code>ID</code> 指定</li>
+<li>与宿主机网络空间隔离</li>
+<li>容器间共享网络空间，直接<code>使用对方的网络</code></li>
+<li>第一个容器的网络可能是<code>bridge</code>, <code>none</code>, <code>host</code>，而第二个容器模式依赖于第一个容器</li>
+<li>如果第一个容器<code>停止</code>，将导致<code>无法创建第二个容器</code></li>
+<li>第二个容器可以直接<code>使用127.0.0.1访问第一个容器</code></li>
+<li>适合<code>频繁的容器间的网络通信</code></li>
+<li>默认<code>不支持端口映射</code>，较少使用</li>
+</ul>
+</li>
+<li>小结
+<ul>
+<li>适用于希望<code>多个容器共享相同网络栈</code>，直接通信的场景。</li>
+</ul>
+</li>
+<li>案例<div><pre class="hljs"><code><span class="hljs-comment"># 创建前端容器 wordpress，开放宿主机端口80</span>
+docker run -d \
+-p 80:80 --name wordpress \
+-v /data/wordpress:/var/www/html \
+wordpress:php7.4-apache
+
+<span class="hljs-comment"># 创建数据库容器 mysql，共享前端wordpress的网络</span>
+<span class="hljs-comment"># 由于使用了 --network，后续链接数据库可使用 127.0.0.1</span>
+docker run --network container:wordpress \
+-e MYSQL_ROOT_PASSWORD=alopex \
+-e MYSQL_DATABASE=wordpress \
+-e MYSQL_USER=wordpress \
+-e MYSQL_PASSWORD=alopex \
+-v /data/mysql:/var/lib/mysql \
+--name mysql -d \
+mysql:8.0</code></pre></div>
+<img src="/_resources/ffe109070cdb46b19af0075908ed9c83.png" /><br />
+!!!</li>
+</ul>
+<h3 id="自定义网络">自定义网络</h3>
+<p>!!! tip 场景说明</p>
+<ul>
+<li>语法声明<div><pre class="hljs"><code>docker network create -d &lt;mode&gt; --subnet &lt;CIDR&gt; --gateway &lt;网关&gt; &lt;自定义网络名称&gt;
+
+<span class="hljs-comment"># 注意mode不支持host和none 默认是bridge模式</span>
+-d &lt;mode&gt; 可省略，默认为bridge</code></pre></div>
+<ul>
+<li>docker  run --net= my-network ...</li>
+</ul>
+</li>
+<li>工作方式
+<ul>
+<li>使用自定义网络模式, 实现<code>不同集群应用的独立网络管理</code>, 而互不影响在网一个网络内, 可以<code>直接利用容器名相互访问</code></li>
+</ul>
+</li>
+<li>案例<div><pre class="hljs"><code><span class="hljs-comment"># 创建一个subnet 选择使用桥接模式，网段为 172.27.0.0/16</span>
+docker network create -d bridge \
+--subnet=172.27.0.0/16 \
+--gateway=172.27.0.1 mynet
+
+<span class="hljs-comment"># 查看自建网络</span>
+[
+    {
+        <span class="hljs-string">"Name"</span>: <span class="hljs-string">"mynet"</span>,
+        <span class="hljs-string">"Id"</span>: <span class="hljs-string">"38214b8ba881d2b919bf59c1e5e27d838c973967bd04b4456333388a93c1bc18"</span>,
+        <span class="hljs-string">"Created"</span>: <span class="hljs-string">"2024-04-26T16:10:55.214517178+08:00"</span>,
+        <span class="hljs-string">"Scope"</span>: <span class="hljs-string">"local"</span>,
+        <span class="hljs-string">"Driver"</span>: <span class="hljs-string">"bridge"</span>,
+        <span class="hljs-string">"EnableIPv6"</span>: <span class="hljs-literal">false</span>,
+        <span class="hljs-string">"IPAM"</span>: {
+            <span class="hljs-string">"Driver"</span>: <span class="hljs-string">"default"</span>,
+            <span class="hljs-string">"Options"</span>: {},
+            <span class="hljs-string">"Config"</span>: [
+                {
+                    <span class="hljs-string">"Subnet"</span>: <span class="hljs-string">"172.27.0.0/16"</span>,
+                    <span class="hljs-string">"Gateway"</span>: <span class="hljs-string">"172.27.0.1"</span>
+                }
+            ]
+        },
+        <span class="hljs-string">"Internal"</span>: <span class="hljs-literal">false</span>,
+        <span class="hljs-string">"Attachable"</span>: <span class="hljs-literal">false</span>,
+        <span class="hljs-string">"Ingress"</span>: <span class="hljs-literal">false</span>,
+        <span class="hljs-string">"ConfigFrom"</span>: {
+            <span class="hljs-string">"Network"</span>: <span class="hljs-string">""</span>
+        },
+        <span class="hljs-string">"ConfigOnly"</span>: <span class="hljs-literal">false</span>,
+        <span class="hljs-string">"Containers"</span>: {},
+        <span class="hljs-string">"Options"</span>: {},
+        <span class="hljs-string">"Labels"</span>: {}
+    }
+]
+<span class="hljs-comment"># 创建容器使用自定义网络</span>
+docker run --network=mynet -d rocky:demo tail -f /etc/hosts
+
+<span class="hljs-comment"># 查看其网络配置</span>
+<span class="hljs-string">"Networks"</span>: {
+    <span class="hljs-string">"mynet"</span>: {
+        <span class="hljs-string">"IPAMConfig"</span>: null,
+        <span class="hljs-string">"Links"</span>: null,
+        <span class="hljs-string">"Aliases"</span>: [
+            <span class="hljs-string">"75be6bd6aaf4"</span>
+        ],
+        <span class="hljs-string">"NetworkID"</span>: <span class="hljs-string">"38214b8ba881d2b919bf59c1e5e27d838c973967bd04b4456333388a93c1bc18"</span>,
+        <span class="hljs-string">"EndpointID"</span>: <span class="hljs-string">"89fd76bd5dd18ac24f89b498d3336901058171ec817eae905b7fc9c1eb5b3e55"</span>,
+        <span class="hljs-string">"Gateway"</span>: <span class="hljs-string">"172.27.0.1"</span>,
+        <span class="hljs-string">"IPAddress"</span>: <span class="hljs-string">"172.27.0.2"</span>,
+        <span class="hljs-string">"IPPrefixLen"</span>: 16,
+        <span class="hljs-string">"IPv6Gateway"</span>: <span class="hljs-string">""</span>,
+        <span class="hljs-string">"GlobalIPv6Address"</span>: <span class="hljs-string">""</span>,
+        <span class="hljs-string">"GlobalIPv6PrefixLen"</span>: 0,
+        <span class="hljs-string">"MacAddress"</span>: <span class="hljs-string">"02:42:ac:1b:00:02"</span>,
+        <span class="hljs-string">"DriverOpts"</span>: null
+    }</code></pre></div>
+</li>
+</ul>
+<p>!!!</p>
+<h1 id="harbor私有仓库">Harbor私有仓库</h1>
+<h2 id="基本操作">基本操作</h2>
+<h3 id="上传镜像">上传镜像</h3>
+<ol start="0">
+<li>
+<p>harbor创建项目和用户</p>
+<ul>
+<li>创建项目 <code>Projects</code>
+<ul>
+<li><img src="/_resources/189e8f836e3043f8a0d915d1befad0ef.png" /></li>
+</ul>
+</li>
+<li>创建用户 <code>Administration</code> -&gt; <code>User</code>
+<ul>
+<li><img src="/_resources/2e26b6559d2b455ca33851f817cec8ec.png" /></li>
+</ul>
+</li>
+<li>将现有用户<code>alfie</code>成为项目<code>member</code>赋予权限<code>Project Admin</code>
+<ul>
+<li><img src="/_resources/467e503d5d9a47cebebf38a02d82757d.png" /></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>登录harbor</p>
+<ul>
+<li>docker login <a title="http://192.168.66.101:80" href="http://192.168.66.101:80">http://192.168.66.101:80</a></li>
+<li><img src="/_resources/af0a0fc69f3441e6a6e3976da9ccf48c.png" /></li>
+</ul>
+</li>
+<li>
+<p>本地镜像打标签</p>
+<ul>
+<li>标签格式
+<ul>
+<li><code>Harbor-host:port/project-name/image:tag</code></li>
+<li>端口不能省略</li>
+</ul>
+</li>
+<li>docker tag alpine:latest  192.168.66.101:80/alfie-app/alpine:v1</li>
+</ul>
+</li>
+<li>
+<p>insecurity设置</p>
+<div><pre class="hljs"><code><span class="hljs-punctuation">{</span>
+ <span class="hljs-attr">"insecure-registries"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">"10.0.0.10:80"</span><span class="hljs-punctuation">,</span><span class="hljs-string">"10.0.0.11:80"</span><span class="hljs-punctuation">]</span>  #说明<span class="hljs-punctuation">:</span> <span class="hljs-string">":80"</span>端口可省略
+<span class="hljs-punctuation">}</span>
+
+systemctl daemon-reload
+systemctl restart docker</code></pre></div>
+</li>
+<li>
+<p>上传镜像</p>
+<ul>
+<li>docker push 192.168.66.101:80/alfie-app/alpine:v1</li>
+<li><img src="/_resources/2b2b5bfff4d246649858f069040bba3f.png" /></li>
+</ul>
+</li>
+<li>
+<p>harbor查看镜像</p>
+<ul>
+<li><img src="/_resources/97e3cb121dd6479ca220a7965c86fef3.png" /></li>
+</ul>
+</li>
+<li>
+<p>查看上传日志</p>
+<ul>
+<li><img src="/_resources/2aa1784a94f64bbd8359c3147e05d12b.png" /></li>
+</ul>
+</li>
+</ol>
+<h3 id="下载镜像">下载镜像</h3>
+<ol start="0">
+<li>
+<p>docker security 开启（对于非443服务）</p>
+<div><pre class="hljs"><code><span class="hljs-punctuation">{</span>
+ <span class="hljs-attr">"insecure-registries"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">"10.0.0.10:80"</span><span class="hljs-punctuation">,</span><span class="hljs-string">"10.0.0.11:80"</span><span class="hljs-punctuation">]</span>  #说明<span class="hljs-punctuation">:</span> <span class="hljs-string">":80"</span>端口可省略
+<span class="hljs-punctuation">}</span>
+OR 
+/usr/lib/systemd/system/docker.service
+ExecStart=/usr/bin/dockerd --containerd=/run/containerd/containerd.sock --insecure-registry <span class="hljs-number">192.168</span><span class="hljs-number">.66</span><span class="hljs-number">.101</span>
+
+systemctl daemon-reload
+systemctl restart docker</code></pre></div>
+</li>
+<li>
+<p>登录harbor</p>
+<ul>
+<li>docker login <a title="http://192.168.66.101:80" href="http://192.168.66.101:80">http://192.168.66.101:80</a></li>
+<li><img src="/_resources/af0a0fc69f3441e6a6e3976da9ccf48c.png" /></li>
+</ul>
+</li>
+<li>
+<p>拉去镜像</p>
+<ul>
+<li>docker pull 192.168.66.101:80/alfie-app/alpine@sha256:6457d53fb065d6f250e1504b9bc42d5b6c65941d57532c072d929dd0628977d0</li>
+<li><img src="/_resources/11a45a1e4c9741958157ed380cdc071f.png" /></li>
+</ul>
+</li>
+</ol>
+<h3 id="更新配置">更新配置</h3>
+<ol>
+<li>
+<p>关闭harbor<br />
+cd /apps/harbor &amp;&amp; docker-compose down</p>
+</li>
+<li>
+<p>修改harbor配置文件 <code>harbor.yml</code></p>
+</li>
+<li>
+<p>配置重新生成</p>
+<div><pre class="hljs"><code>./prepare
+Clearing the configuration file: /config/portal/nginx.conf
+Clearing the configuration file: /config/<span class="hljs-built_in">log</span>/logrotate.conf
+Clearing the configuration file: /config/<span class="hljs-built_in">log</span>/rsyslog_docker.conf
+Clearing the configuration file: /config/nginx/nginx.conf
+Clearing the configuration file: /config/core/env
+Clearing the configuration file: /config/core/app.conf
+Clearing the configuration file: /config/registry/passwd
+Clearing the configuration file: /config/registry/config.yml
+Clearing the configuration file: /config/registry/root.crt
+Clearing the configuration file: /config/registryctl/env
+Clearing the configuration file: /config/registryctl/config.yml
+Clearing the configuration file: /config/db/env
+Clearing the configuration file: /config/jobservice/env
+Clearing the configuration file: /config/jobservice/config.yml
+Generated configuration file: /config/portal/nginx.conf
+Generated configuration file: /config/<span class="hljs-built_in">log</span>/logrotate.conf
+Generated configuration file: /config/<span class="hljs-built_in">log</span>/rsyslog_docker.conf
+Generated configuration file: /config/nginx/nginx.conf
+Generated configuration file: /config/core/env
+Generated configuration file: /config/core/app.conf
+Generated configuration file: /config/registry/config.yml
+Generated configuration file: /config/registryctl/env
+Generated configuration file: /config/registryctl/config.yml
+Generated configuration file: /config/db/env
+Generated configuration file: /config/jobservice/env
+Generated configuration file: /config/jobservice/config.yml
+loaded secret from file: /data/secret/keys/secretkey
+Generated configuration file: /compose_location/docker-compose.yml</code></pre></div>
+</li>
+<li>
+<p>启动harbor<br />
+docker-compose up -d</p>
+</li>
+</ol>
+<h2 id="https请求实现">https请求实现.</h2>
+<ol start="0">
+<li>配置域名</li>
+</ol>
+<blockquote>
+<p>hostnamectl set-hostname www.my-harbor.com<br />
+sed  -i '$a  192.168.66.101 www.my-harbor.com' /etc/hosts</p>
+</blockquote>
+<ol>
+<li>
+<p>生成证书<br />
+<a>0x07 SSL/签署证书#制作根证书</a><br />
+<a>0x07 SSL/签署证书#生成服务端证书</a></p>
+<div><pre class="hljs"><code>#创建证书相关数据的目录
+mkdir -p /data/harbor/certs
+cd /data/harbor/certs
+
+#生成ca的私钥
+openssl genrsa -out ca.key <span class="hljs-number">4096</span>
+
+#生成ca的自签名证书
+openssl req -x509 -new -nodes -sha512 -days <span class="hljs-number">3650</span> \
+-subj <span class="hljs-string">"/C=CN/ST=Beijing/L=Beijing/O=example/OU=Personal/CN=ca.harbor.com"</span> \
+-key ca.key \
+-out ca.crt
+
+#生成harbor主机的私钥
+openssl genrsa -out my-harbor.key <span class="hljs-number">4096</span>
+
+#生成harbor主机的证书申请
+openssl req -sha512 -new \
+-subj <span class="hljs-string">"/C=CN/ST=Beijing/L=Beijing/O=example/OU=Personal/CN=www.my-harbor.com"</span> \
+-key my-harbor.key \
+-out my-harbor.csr
+
+#创建x509 v3 扩展文件(新版新增加的要求)
+cat &gt; v3.ext &lt;&lt;-EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = ip:<span class="hljs-number">192.168</span><span class="hljs-number">.66</span><span class="hljs-number">.101</span>, DNS:www.my-harbor.com
+
+#[alt_names]
+#DNS<span class="hljs-number">.1</span>=www.my-harbor.com      #此处必须和和harbor的网站名称一致
+#DNS<span class="hljs-number">.2</span>=my-harbor.com                 #可选
+EOF
+
+#给 harbor主机颁发证书
+openssl x509 -req -sha512 -days <span class="hljs-number">3650</span> \
+-extfile v3.ext \
+-CA ca.crt -CAkey ca.key -CAcreateserial \
+-in my-harbor.csr \
+-out my-harbor.crt
+
+# 证书查看
+openssl x509 -in my-harbor.crt -noout -text</code></pre></div>
+</li>
+<li>
+<p>服务器使用证书</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 在应用下创建证书目录</span>
+mkdir  /apps/harbor/certs
+
+<span class="hljs-comment"># 复制证书到该路径下</span>
+cp my-harbor.crt my-harbor.key /apps/harbor/certs/
+
+<span class="hljs-comment"># 修改配置 harbor.yml</span>
+https:
+  <span class="hljs-comment"># https port for harbor, default is 443</span>
+  port: 443
+  <span class="hljs-comment"># The path of cert and key files for nginx</span>
+  certificate: /apps/harbor/certs/my-harbor.crt
+  private_key: /apps/harbor/certs/my-harbor.key
+  
+<span class="hljs-comment"># 使配置生效</span>
+<span class="hljs-built_in">cd</span> /apps/harbor/
+./prepare
+docker-compose down -v
+docker-compose up -d</code></pre></div>
+</li>
+<li>
+<p>客户端使用证书</p>
+</li>
+<li>
+<p>浏览器使用证书</p>
+</li>
+</ol>
+<ul>
+<li><code>c:\Windows\System32\Drivers\etc\hosts</code>
+<ul>
+<li>追加主机解析记录</li>
+<li>192.168.66.101  www.my-harbor.com</li>
+<li><img src="/_resources/e4f2677ac2f04525b7fde6db0e7107dc.png" /><br />
+*<img src="/_resources/d15b933e156e495db84f295a26c79aa3.png" /></li>
+</ul>
+</li>
+<li>证书导入
+<ul>
+<li><img src="/_resources/51ac1adfd1c944babc6eed2b10e61afa.png" /></li>
+<li><img src="/_resources/5672e3249f1e45b5b6afa6762b9cadcb.png" /></li>
+<li><img src="/_resources/4a86feb039f04586b0599ff214b867fc.png" /></li>
+<li><img src="/_resources/714545e9f28649d4b8f45c7f6d04d0dc.png" /></li>
+</ul>
+</li>
+<li>再次访问
+<ul>
+<li><img src="/_resources/6b87c1d94ba545499b533ba31cad280d.png" /></li>
+</ul>
+</li>
+</ul>
+<ol start="5">
+<li>
+<p>客户端配置证书</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 转换客户端证书(即后缀为 my-harbor.cert)</span>
+<span class="hljs-built_in">cd</span> /data/harbor/certs
+openssl x509 -inform PEM -<span class="hljs-keyword">in</span> my-harbor.crt -out my-harbor.cert
+
+<span class="hljs-comment"># 创建和harbor服务器同名目录</span>
+mkdir -pv /etc/docker/certs.d/www.my-harbor.com/
+
+<span class="hljs-comment"># 将.cert, .key, ca.key 复制到该目录下</span>
+cp my-harbor.cert my-harbor.key ca.crt /etc/docker/certs.d/www.my-harbor.com/</code></pre></div>
+</li>
+<li>
+<p>推送镜像测试</p>
+<ul>
+<li>登录账号
+<ul>
+<li>docker login www.my-harbor.com</li>
+<li><img src="/_resources/18bc7c3b790a404483f0f25b05729281.png" /></li>
+</ul>
+</li>
+<li>修改镜像标签
+<ul>
+<li>docker tag busybox:latest www.my-harbor.com/alfie-app/busybox:v1</li>
+</ul>
+</li>
+<li>推送镜像
+<ul>
+<li>docker push www.my-harbor.com/alfie-app/busybox:v1</li>
+<li><img src="/_resources/bb487b357fd94546b246dfdf7be8c245.png" /></li>
+</ul>
+</li>
+<li>获得镜像
+<ul>
+<li>docker pull www.my-harbor.com/alfie-app/busybox@sha256:db16cd196b8a37ba5f08414e6f6e71003d76665a5eac160cb75ad3759d8b3e29</li>
+<li><img src="/_resources/065852849fd54c2caba3b29e5272253f.png" /></li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+<h1 id="jumpserver安装和使用">JumpServer安装和使用</h1>
+<h2 id="部署">部署</h2>
+<h3 id="离线部署">离线部署</h3>
+<p><a title="https://docs.jumpserver.org/zh/v3/installation/setup_linux_standalone/offline_install/#1" href="https://docs.jumpserver.org/zh/v3/installation/setup_linux_standalone/offline_install/#1">离线部署介绍</a></p>
+<h3 id="脚本部署">脚本部署</h3>
+<div><pre class="hljs"><code>curl -sSL https://resource.fit2cloud.com/jumpserver/jumpserver/releases/latest/download/quick_start.sh | bash</code></pre></div>
+<p>!!! tip 密钥和token信息</p>
+<div><pre class="hljs"><code><span class="hljs-number">1</span>. Configure <span class="hljs-keyword">Private</span> <span class="hljs-keyword">Key</span>
+<span class="hljs-symbol">SECRETE_KEY:</span>     <span class="hljs-number">216</span>aa1a921346036377a317f007a50330c84a85dea56d145
+<span class="hljs-symbol">BOOTSTRAP_TOKEN:</span> jz0nNnx1Kts9v45233O8bHbZ
+complete
+
+# 应对此进行备份，因迁移请保证 SECRET_KEY和BOOTSTRAP_TOKEN与旧环境一致</code></pre></div>
+<p>!!!</p>
+<p>!!! tip 提示信息<br />
+首次安装后需要修改配置文件，定义 <code>DOMAINS</code> 字段后即可正常使用。<br />
+如果服务器是一键安装并且旧版本就已经使用 <code>JumpServer</code> 开启了 <code>HTTPS</code>，则不需要进行任何更改。<br />
+需要使用 IP 地址来访问 <code>JumpServer</code> 的场景，可以根据自己的 <code>IP</code> 类型来填写 <code>config.txt</code> 配置文件中 <code>DOMAINS</code> 字段为公网 IP 还是内网 IP。</p>
+<p>默认安装路径：<code>/opt/jumpserver</code></p>
+<div><pre class="hljs"><code>vim /opt/jumpserver/config/config.txt 
+
+<span class="hljs-comment"># 可信任 DOMAINS 定义,</span>
+<span class="hljs-comment"># 定义可信任的访问 IP, 请根据实际情况修改, 如果是公网 IP 请改成对应的公网 IP,</span>
+<span class="hljs-comment"># DOMAINS="demo.jumpserver.org"    # 使用域名访问</span>
+<span class="hljs-comment"># DOMAINS="172.17.200.191"         # 使用 IP 访问</span>
+<span class="hljs-comment"># DOMAINS="demo.jumpserver.org,172.17.200.191"    # 使用 IP 和 域名一起访问</span>
+DOMAINS=<span class="hljs-string">"www.my-harbor.com,192.168.66.101:80"</span></code></pre></div>
+<p>!!!</p>
+<h3 id="访问方式">访问方式</h3>
+<p>!!! info 访问登录</p>
+<div><pre class="hljs"><code>地址: http:<span class="hljs-regexp">//</span>&lt;JumpServer服务器IP地址&gt;:&lt;服务运行端口&gt;
+如上面配置：http:<span class="hljs-regexp">//</span>www.my-harbor.com:<span class="hljs-number">80</span>
+用户名: admin
+密码: admin</code></pre></div>
+<p>!!!</p>
+<h3 id="服务管理">服务管理</h3>
+<div><pre class="hljs"><code>/opt/jumpserver-installer-v3.10.9/jmsctl.sh
+
+JumpServer Deployment Management Script
+
+Usage: 
+  ./jmsctl.sh [COMMAND] [ARGS...]
+  ./jmsctl.sh --<span class="hljs-built_in">help</span>
+
+Installation Commands: 
+  install           Install JumpServer
+
+Management Commands: 
+  config            Configuration  Tools
+  start             Start     JumpServer
+  stop              Stop      JumpServer
+  restart           Restart   JumpServer
+  status            Check     JumpServer
+  down              Offline   JumpServer
+  uninstall         Uninstall JumpServer
+
+More Commands:
+  load_image        Loading docker image
+  backup_db         Backup database
+  restore_db [file] Data recovery through database backup file
+  raw               Execute the original docker-compose <span class="hljs-built_in">command</span>
+  tail [service]    View <span class="hljs-built_in">log</span></code></pre></div>
+<h2 id="常用功能">常用功能</h2>
+<p><img src="/_resources/d3dfc36aa643419983e164abc45cd565.png" /></p>
+<h3 id="管理员">管理员</h3>
+<h4 id="创建用户组">创建用户组</h4>
+<p><img src="/_resources/145ace43eba645db8d77a444109768fd.png" /></p>
+<h4 id="配置用户-登录名称-leslie">配置用户 (登录名称 leslie)</h4>
+<p><img src="/_resources/93ddd63e9b1149008a63cf784fa90078.png" /></p>
+<h4 id="创建资产">创建资产</h4>
+<p><img src="/_resources/3d0f32ad9fdb41d285896779b00229f5.png" /><br />
+<img src="/_resources/67412e663d114f4a8e1ab4d04956c2ac.png" /><br />
+<img src="/_resources/e926cb080ca44463951d21125ecf2f75.png" /></p>
+<h4 id="账户模板">账户模板</h4>
+<p><img src="/_resources/74b29985d55a4761a5e0097e9609f2ca.png" /></p>
+<h4 id="账户推送">账户推送</h4>
+<p><img src="/_resources/852ea0c104b149b3ab195b5851ba256a.png" /><br />
+<img src="/_resources/d3f6d12d75264929903999ad1d33d03b.png" /><br />
+<img src="/_resources/5b15a838c21b42a7bcf239ac039b4fcd.png" /></p>
+<h4 id="用户登录">用户登录</h4>
+<p><img src="/_resources/1a6eee195ff0494a9dfc2b3a0ea61ed3.png" /></p>
+<h4 id="创建授权策略">创建授权策略</h4>
+<p><img src="/_resources/00b5fe99c75940829492c1b0a5ffd2c6.png" /></p>
+<h4 id="命令执行限制">命令执行限制</h4>
+<p><img src="/_resources/5942e0724b5f4455855c545c856e696f.png" /><br />
+<img src="/_resources/5a01778a7ba141fe9a19c24e91605253.png" /></p>
+<h3 id="操作员">操作员</h3>
+<h4 id="登录账户">登录账户</h4>
+<p><img src="/_resources/a1ef8090428748fd8c528eb2adb27e42.png" /><br />
+<img src="/_resources/d5d40705c7324d738f3852839c457545.png" /><br />
+<img src="/_resources/f124487995294e348d5b886c56b29401.png" /><br />
+<img src="/_resources/cbc29c145be74a9ea637e33ad4ebe74a.png" /></p>
+<h4 id="webshell登录用户">webshell登录用户</h4>
+<p><img src="/_resources/b5b81c27cee44a9ca3fbebfb34d884ce.png" /><br />
+<img src="/_resources/d1829be34dfd46e886f07af77679f6c4.png" /></p>
+<h4 id="webshell命令限制">webshell命令限制</h4>
+<p><img src="/_resources/9b72090c0af24f6fbcb2e88e948e0725.png" /><br />
+<img src="/_resources/ae1938a2f35c479fbde3208649ce979b.png" /></p>
+<h3 id="审计员">审计员</h3>
+<h4 id="会话查看">会话查看</h4>
+<p><img src="/_resources/88e35cfe72a547e5be25f98a4665a867.png" /><br />
+<img src="/_resources/bc89439f916f42c296a72a8ed1ef4bc3.png" /><br />
+<img src="/_resources/fbbe8690459244e792be43a0b56adfe4.png" /><br />
+<img src="/_resources/eff33335e53c42dea63023177e10a42b.png" /></p>
+<h4 id="命令记录">命令记录</h4>
+<p><img src="/_resources/121499c22adf4fdcaae5bbe94414d0ee.png" /><br />
+<img src="/_resources/4c5ba478c22a48429d9ccdcf25020cc4.png" /><br />
+<img src="/_resources/ff46aa8ddee54c46a3ff5791c1b6c23c.png" /></p>
+<h4 id="查看录制视频">查看录制视频</h4>
+<ul>
+<li>对于下载的是视频，我们需要用特定的工具对其进行打开</li>
+<li><a title="https://github.com/jumpserver/VideoPlayer/releases" href="https://github.com/jumpserver/VideoPlayer/releases">VideoPlayer</a>
+<ul>
+<li><a title="https://github.com/jumpserver/VideoPlayer/releases/download/v0.1.10/JumpServer-VideoPlayer-v0.1.10-win-x64.exe" href="https://github.com/jumpserver/VideoPlayer/releases/download/v0.1.10/JumpServer-VideoPlayer-v0.1.10-win-x64.exe">win-x64</a></li>
+</ul>
+</li>
+</ul>
+<h4 id="登录日志">登录日志</h4>
+<p><img src="/_resources/c9d0e6c85d6a4d4d88e0f269c2a47df8.png" /></p>
+<h4 id="操作日志">操作日志</h4>
+<p><img src="/_resources/f6a5131cd2f44174939a87f8353809b3.png" /></p>
+<h4 id="改密日志">改密日志</h4>
+<p><img src="/_resources/7460ad58c0d14a4eb39788a8c5e4c11d.png" /></p>
+]]></content:encoded>
+        </item>
         <item>
             <title><![CDATA[第三周作业]]></title>
             <guid>c04ff88c7f834e8ca064a0914a92744b</guid>

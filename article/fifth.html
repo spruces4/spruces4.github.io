@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<link rel="stylesheet" href="/_assets/main.css" />
+
+    <title>第五周作业 - Alfie Cheung</title>
+  <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /></head>
+  <body>
+    <div class="main">
+      <nav class="navigation">
+        <a href="/">Alfie Cheung</a>
+      </nav>
+      <article>
+        <header>
+          <h1 class="article-title">第五周作业</h1>
+          <div class="article-info">
+            <div>
+              <span
+                >Created At：<time datetime="1715523269088"
+                  >2024-05-12 22:14</time
+                ></span
+              >
+              <span
+                >Updated At：<time datetime="1715523422675"
+                  >2024-05-12 22:17</time
+                ></span
+              >
+            </div>
+            
+          </div>
+        </header>
+        <div class="article-content markdown-body"><nav class="table-of-contents"><ul><li><a href="#keepalived-nginx-高可用">keepalived nginx 高可用</a><ul><li><a href="#创建脚本执行用户">创建脚本执行用户</a></li><li><a href="#nginx代理服务配置">Nginx代理服务配置</a></li><li><a href="#应用服务配置">应用服务配置</a></li><li><a href="#keepalived-服务配置">Keepalived 服务配置</a></li><li><a href="#测试检查">测试检查</a></li></ul></li><li><a href="#keepalived-haproxy-高可用">keepalived haproxy 高可用</a><ul><li><a href="#haproxy-服务配置">HAProxy 服务配置</a></li><li><a href="#应用服务配置-1">应用服务配置</a></li><li><a href="#keepalived-服务配置-1">Keepalived 服务配置</a></li><li><a href="#检查测试">检查测试</a></li></ul></li><li><a href="#redis-集群部署">Redis 集群部署</a><ul><li><a href="#部署">部署</a><ul><li><a href="#安装redis">安装redis</a></li><li><a href="#修改参数">修改参数</a></li><li><a href="#创建集群">创建集群</a></li><li><a href="#验证集群">验证集群</a></li></ul></li></ul></li></ul></nav><h1 id="keepalived-nginx-高可用">keepalived nginx 高可用</h1>
+<p>!!! warning SElinux<br />
+该配置需要关闭<code>SELINXU</code>，否则会出现 <code>503</code> 告警。<br />
+<img src="/_resources/dbf08aa9cd4d4fd9bb217974e8feab11.png" /><br />
+!!!</p>
+<h2 id="创建脚本执行用户">创建脚本执行用户</h2>
+<div><pre class="hljs"><code>useradd -r -s <span class="hljs-regexp">/sbin/</span>nologin keepalived_script
+chown keepalived_script:keepalived_script <span class="hljs-regexp">/etc/</span>keepalived/check_nginx.sh
+chmod <span class="hljs-number">655</span> <span class="hljs-regexp">/etc/</span>keepalived/check_nginx.sh</code></pre></div>
+<h2 id="nginx代理服务配置">Nginx代理服务配置</h2>
+<div><pre class="hljs"><code><span class="hljs-regexp">/etc/</span>nginx/nginx.conf
+
+user nginx;
+worker_processes auto;
+error_log <span class="hljs-regexp">/var/</span>log<span class="hljs-regexp">/nginx/</span>error.log;
+pid <span class="hljs-regexp">/run/</span>nginx.pid;
+
+<span class="hljs-comment"># Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.</span>
+include <span class="hljs-regexp">/usr/</span>share<span class="hljs-regexp">/nginx/m</span>odules/*.conf;
+
+events {
+    worker_connections <span class="hljs-number">1024</span>;
+}
+
+http {
+    upstream demos {
+        server <span class="hljs-number">192.168</span>.<span class="hljs-number">100.103</span>:<span class="hljs-number">80</span> weight=<span class="hljs-number">1</span>;  <span class="hljs-comment"># 后端web服务器</span>
+        server <span class="hljs-number">192.168</span>.<span class="hljs-number">100.104</span>:<span class="hljs-number">80</span> weight=<span class="hljs-number">1</span>;  <span class="hljs-comment"># 后端web服务器</span>
+    }
+    server {
+        listen <span class="hljs-number">80</span>;
+        location /{
+                proxy_pass http:<span class="hljs-regexp">//</span>demos/;
+        }
+    }
+}
+~           </code></pre></div>
+<h2 id="应用服务配置">应用服务配置</h2>
+<div><pre class="hljs"><code>yum -y install nginx
+systemctl start nginx 
+
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"&lt;h1&gt;`hostname -I`&lt;/h1&gt;"</span> &gt; /usr/share/nginx/html/index.html</code></pre></div>
+<h2 id="keepalived-服务配置">Keepalived 服务配置</h2>
+<div><pre class="hljs"><code>! Configuration File for keepalived
+
+<span class="hljs-keyword">global_defs</span> {
+   router_id alfie_keepalive_1  <span class="hljs-comment"># 备用节点修改名称</span>
+   vrrp_skip_check_adv_addr
+   vrrp_garp_interval <span class="hljs-number">0</span>
+   vrrp_gna_interval <span class="hljs-number">0</span>
+   vrrp_mcast_group4 <span class="hljs-number">224.0</span>.<span class="hljs-number">0</span>.<span class="hljs-number">18</span>
+}
+
+<span class="hljs-keyword">vrrp_script</span> <span class="hljs-keyword">check_nginx</span> {
+    script <span class="hljs-string">"/etc/keepalived/check_nginx.sh"</span>  <span class="hljs-comment"># 使用 kill 发送 0 信号 确认程序是否工作正常</span>
+    interval <span class="hljs-number">1</span>
+    weight -<span class="hljs-number">30</span>  <span class="hljs-comment"># 失败后降低 30 权重</span>
+    fall <span class="hljs-number">3</span>
+    rise <span class="hljs-number">5</span>
+    timeout <span class="hljs-number">2</span>
+}
+
+<span class="hljs-keyword">vrrp_instance</span> <span class="hljs-keyword">alfie_ka1</span> {
+    state MASTER  <span class="hljs-comment"># 备用节点为 BACKUP</span>
+    interface ens33
+    virtual_router_id <span class="hljs-number">61</span>
+    <span class="hljs-literal">priority</span> <span class="hljs-number">100</span>  <span class="hljs-comment"># 备用节点默认权重 80</span>
+    advert_int <span class="hljs-number">1</span>
+    authentication {
+        <span class="hljs-literal">auth_type</span> PASS
+        auth_pass alopex
+    }
+    <span class="hljs-keyword">virtual_ipaddress</span> {
+        <span class="hljs-number">192.168</span>.<span class="hljs-number">100.111</span>/<span class="hljs-number">24</span>
+    }
+    <span class="hljs-keyword">unicast_src_ip</span> 192.168.100.101  <span class="hljs-comment"># 备用节点修改本地IP</span>
+    unicast_peer{
+        192.168.100.102  <span class="hljs-comment"># 备用节点此处填写主节点IP</span>
+    }
+    <span class="hljs-keyword">track_script</span> {
+        check_nginx
+    }
+}
+include /etc/keepalived/conf.d/*.conf</code></pre></div>
+<div><pre class="hljs"><code>chmod a+x /etc/keepalived/check_nginx.sh
+<span class="hljs-comment"># 文件 /usr/bin/killall -0 nginx</span>
+
+<span class="hljs-comment">#!/bin/bash</span>
+/usr/bin/killall -0 nginx</code></pre></div>
+<h2 id="测试检查">测试检查</h2>
+<p><img src="/_resources/02644064d4744c069321d380e5dcf46e.png" /></p>
+<ul>
+<li>
+<p>关闭DS1 keepalived</p>
+<ul>
+<li>地址切换正常<br />
+<img src="/_resources/7386e8bfcea140429ef7d280c8768e6e.png" /></li>
+<li>应用访问正常<br />
+<img src="/_resources/353ef8cfcc7d4909ad78c168887f27f7.png" /></li>
+</ul>
+</li>
+<li>
+<p>关闭RS1</p>
+<ul>
+<li>应用访问正常<br />
+<img src="/_resources/4975aad83b4d4d4bb10466d0c26ecbf3.png" /></li>
+</ul>
+</li>
+<li>
+<p>健康检查 （恢复DS1 keepalived 关闭 nginx）<br />
+<img src="/_resources/bd151b80681648659c49ae8a57c14836.png" /></p>
+</li>
+</ul>
+<h1 id="keepalived-haproxy-高可用">keepalived haproxy 高可用</h1>
+<h2 id="haproxy-服务配置">HAProxy 服务配置</h2>
+<p>!!! warning 注意事项</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 绑定非自身IP地址</span>
+vim /etc/sysctl.conf
+net.ipv4.ip_nonlocal_bind = 1
+
+sysctl -p
+
+<span class="hljs-comment"># 在防火墙上放行通对VIP的访问</span>
+firewall-cmd --permanent --add-rich-rule=<span class="hljs-string">'rule family="ipv4" destination address="192.168.100.111" accept'</span> 
+firewall-cmd --reload</code></pre></div>
+<p>!!!</p>
+<div><pre class="hljs"><code>global
+  daemon
+  stats socket /var/lib/haproxy/haproxy.sock mode 600 level admin
+  nbthread  5
+
+  user haproxy
+  group haproxy
+  maxconn 100000
+
+defaults
+  option http-keep-alive
+  maxconn 100000
+  mode http
+  timeout connect 300000ms
+  timeout client 300000ms
+  timeout server 300000ms
+
+frontend demo-web-port
+  bind 192.168.100.111:80
+  mode http
+  use_backend demo-web
+
+backend demo-web
+  mode http
+  default-server inter 1000 weight 6
+  server web2 192.168.100.103:80 weight 2<span class="hljs-built_in"> check </span>addr 192.168.100.103 port 80
+  server web3 192.168.100.104:80 weight 2<span class="hljs-built_in"> check </span>addr 192.168.100.104 port 80</code></pre></div>
+<h2 id="应用服务配置-2">应用服务配置</h2>
+<div><pre class="hljs"><code>yum -y install nginx
+systemctl start nginx 
+
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"&lt;h1&gt;`hostname -I`&lt;/h1&gt;"</span> &gt; /usr/share/nginx/html/index.html</code></pre></div>
+<h2 id="keepalived-服务配置-2">Keepalived 服务配置</h2>
+<div><pre class="hljs"><code>! Configuration File for keepalived
+
+<span class="hljs-keyword">global_defs</span> {
+   router_id alfie_keepalive_1  <span class="hljs-comment"># 备用节点修改名称</span>
+   vrrp_skip_check_adv_addr
+   vrrp_garp_interval <span class="hljs-number">0</span>
+   vrrp_gna_interval <span class="hljs-number">0</span>
+   vrrp_mcast_group4 <span class="hljs-number">224.0</span>.<span class="hljs-number">0</span>.<span class="hljs-number">18</span>
+}
+
+<span class="hljs-keyword">vrrp_script</span> <span class="hljs-keyword">check_haproxy</span> {
+    script <span class="hljs-string">"/etc/keepalived/check_haproxy.sh"</span>
+    interval <span class="hljs-number">1</span>
+    weight -<span class="hljs-number">30</span>
+    fall <span class="hljs-number">3</span>
+    rise <span class="hljs-number">5</span>
+    timeout <span class="hljs-number">2</span>
+}
+
+<span class="hljs-keyword">vrrp_instance</span> <span class="hljs-keyword">alfie_ka1</span> {
+    state MASTER <span class="hljs-comment"># 备用节点修改为 BACKUP</span>
+    interface ens33
+    virtual_router_id <span class="hljs-number">61</span>
+    <span class="hljs-literal">priority</span> <span class="hljs-number">100</span>  <span class="hljs-comment"># 备用节点修改 80</span>
+    advert_int <span class="hljs-number">1</span>
+    authentication {
+        <span class="hljs-literal">auth_type</span> PASS
+        auth_pass alopex
+    }
+    <span class="hljs-keyword">virtual_ipaddress</span> {
+        <span class="hljs-number">192.168</span>.<span class="hljs-number">100.111</span>/<span class="hljs-number">24</span>
+    }
+    <span class="hljs-keyword">unicast_src_ip</span> 192.168.100.101 <span class="hljs-comment"># 备用节点修改为本地IP</span>
+    unicast_peer{
+        192.168.100.102   <span class="hljs-comment"># 备用节点填主用节点IP</span>
+    }
+    <span class="hljs-keyword">track_script</span> {
+        check_haproxy
+    }
+}
+
+include /etc/keepalived/conf.d/*.conf
+</code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-regexp">/etc/</span>keepalived/check_haproxy.sh
+chmod <span class="hljs-number">655</span> <span class="hljs-regexp">/etc/</span>keepalived/check_haproxy.sh
+<span class="hljs-comment">#!/bin/bash</span>
+
+<span class="hljs-keyword">if</span> <span class="hljs-regexp">/usr/</span>bin/killall -<span class="hljs-number">0</span> haproxy
+then
+    <span class="hljs-keyword">exit</span> <span class="hljs-number">0</span>
+<span class="hljs-keyword">else</span>
+    systemctl restart haproxy
+fi</code></pre></div>
+<h2 id="检查测试">检查测试</h2>
+<p><img src="/_resources/aa5decab6b8c4d828fb3a154308eb261.png" /><br />
+<img src="/_resources/7c834cb7de134b1683b558970392f65a.png" /></p>
+<ul>
+<li>
+<p>关闭DS1 (keepalived)</p>
+<ul>
+<li>地址切换正常<br />
+<img src="/_resources/a4f2580fe24b4e779c67ea07eb3b2d6b.png" /></li>
+<li>应用访问正常<br />
+<img src="/_resources/5c8b13fe78504bd7a986bb2dbd2cc2fc.png" /></li>
+</ul>
+</li>
+<li>
+<p>关闭RS1</p>
+<ul>
+<li>应用访问正常<br />
+<img src="/_resources/6129d9ac06564637b7b5c57dbecd1816.png" /></li>
+</ul>
+</li>
+<li>
+<p>健康检查（恢复keepalived 关闭DS1 (Haproxy)）<br />
+<img src="/_resources/7e40a06eaf5a443fb144d21f35b41832.png" /></p>
+</li>
+</ul>
+<h1 id="redis-集群部署">Redis 集群部署</h1>
+<h2 id="部署">部署</h2>
+<table>
+<thead>
+<tr>
+<th>主机</th>
+<th>ip</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>s2</td>
+<td>192.168.100.102</td>
+</tr>
+<tr>
+<td>s3</td>
+<td>192.168.100.103</td>
+</tr>
+<tr>
+<td>s4</td>
+<td>192.168.100.104</td>
+</tr>
+</tbody>
+</table>
+<h3 id="安装redis">安装redis</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 关闭SELinux和firewalld</span>
+setenforce 0
+systemctl stop firewalld
+
+<span class="hljs-comment"># 下载源代码包</span>
+<span class="hljs-comment"># github拥有最新的版本</span>
+<span class="hljs-comment">#wget -O redis.7.2.2.tar.gz https://github.com/redis/redis/archive/refs/tags/7.2.2.tar.gz</span>
+<span class="hljs-comment"># http://download.redis.io/releases/</span>
+wget http://download.redis.io/releases/redis-7.2.2.tar.gz
+
+<span class="hljs-comment"># 环境准备</span>
+yum -y install gcc make jemalloc-devel systemd-devel
+
+<span class="hljs-comment"># 解压安装</span>
+tar -xvf redis-7.2.2.tar.gz
+<span class="hljs-built_in">cd</span> redis-7.2.2
+mkdir -p /apps/redis
+make -j 2 USE_SYSTEMD=yes PREFIX=/apps/redis install
+
+<span class="hljs-comment"># 环境变量更新</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">'PATH=/apps/redis/bin:$PATH'</span> &gt; /etc/profile.d/redis.sh
+. /etc/profile.d/redis.sh
+
+<span class="hljs-comment"># 自定义配置文件，日志，数据存放目录</span>
+mkdir /apps/redis/{etc,<span class="hljs-built_in">log</span>,data,run}
+cp /root/redis-7.2.2/redis.conf /apps/redis/etc/
+
+<span class="hljs-comment"># 日志配置</span>
+sed <span class="hljs-string">'s/logfile/logfile "/apps/redis/log/6379_redis.log"/'</span> /apps/redis.conf
+
+<span class="hljs-comment"># 用户创建</span>
+useradd -r -s /sbin/nologin redis
+chown -R redis.redis /apps/redis/
+
+<span class="hljs-comment"># 内核修复</span>
+sed -i <span class="hljs-string">'$ a\net.core.somaxconn = 1024'</span> /etc/sysctl.conf &amp;&amp; sysctl -p
+sed -i <span class="hljs-string">'$ a\vm.overcommit_memory = 1'</span> /etc/sysctl.conf &amp;&amp; sysctl -p
+
+<span class="hljs-comment"># 服务文件</span>
+<span class="hljs-comment"># /lib/systemd/system/redis.service</span>
+cat &gt; /lib/systemd/system/redis.service &lt;&lt;<span class="hljs-string">EOF
+[Unit]
+Description=Redis persistent key-value database
+After=network.target
+
+[Service]
+ExecStart=/apps/redis/bin/redis-server /apps/redis/etc/redis.conf --supervised systemd
+ExecStop=/bin/kill -s QUIT $MAINPID
+Type=notify
+User=redis
+Group=redis
+RuntimeDirectory=redis
+RuntimeDirectoryMode=0755
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+EOF</span>
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl daemon-reload
+systemctl <span class="hljs-built_in">enable</span> --now redis</code></pre></div>
+<h3 id="修改参数">修改参数</h3>
+<div><pre class="hljs"><code>sed -i.bak \
+-e <span class="hljs-string">'s/bind 127.0.0.1/bind 0.0.0.0/'</span>  \
+-e <span class="hljs-string">'/masterauth/a masterauth alopex'</span> \
+-e <span class="hljs-string">"/^dir .*/c dir /apps/redis/data/"</span>  \
+-e <span class="hljs-string">"/logfile .*/c logfile /apps/redis/log/redis-6379.log"</span> \
+-e  <span class="hljs-string">"/^pidfile .*/c  pidfile /apps/redis/run/redis_6379.pid"</span> \
+-e <span class="hljs-string">"/# requirepass/a requirepass alopex"</span> \
+-e <span class="hljs-string">'/# cluster-enabled yes/a cluster-enabled yes'</span> \
+-e <span class="hljs-string">'/# cluster-config-file nodes-6379.conf/a cluster-config-file nodes-6379.conf'</span> \
+-e <span class="hljs-string">'/cluster-require-full-coverage yes/a cluster-require-full-coverage no'</span> \
+/apps/redis/etc/redis.conf</code></pre></div>
+<h3 id="创建集群">创建集群</h3>
+<blockquote>
+<p>集群功能已开启<br />
+<img src="/_resources/c19ae1389de7408e9c222558607c2fd5.png" /></p>
+</blockquote>
+<blockquote>
+<p>cluster 状态启动<br />
+<img src="/_resources/b9f1e910b387463a99bb1e4735113051.png" /></p>
+</blockquote>
+<blockquote>
+<p>16379 端口已启动<br />
+<img src="/_resources/5fcb26c2c6a64ff4b64a96c08b461439.png" /></p>
+</blockquote>
+<blockquote>
+<p>创建集群</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 三个节点不创建 slave 节点</span>
+redis-cli -a alopex --cluster create 192.168.100.102:6379 192.168.100.103:6379 192.168.100.104:6379</code></pre></div>
+<p><img src="/_resources/2ed8a09a9b764eeaa23c15b4952dad8e.png" /></p>
+<h3 id="验证集群">验证集群</h3>
+<blockquote>
+<p>master1 节点查看<br />
+<img src="/_resources/151237e673294a41ac73303f0289d04c.png" /></p>
+</blockquote>
+<blockquote>
+<p>node节点状态查看<br />
+<img src="/_resources/e51315eabfdd453ba2a6695626ea6781.png" /></p>
+</blockquote>
+<blockquote>
+<p>Cluster info查看<br />
+<img src="/_resources/80447bed281243d79e2fddc0b78dd33c.png" /></p>
+</blockquote>
+<blockquote>
+<p>任意节点状态查看<br />
+<img src="/_resources/080ae31c141c4219aca5fa734967b25d.png" /></p>
+</blockquote>
+</div>
+      </article>
+    </div>
+  </body>
+</html>
