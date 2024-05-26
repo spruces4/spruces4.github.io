@@ -4,14 +4,1293 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Sun, 12 May 2024 14:19:31 GMT</lastBuildDate>
+        <lastBuildDate>Sun, 26 May 2024 14:52:39 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
+        <item>
+            <title><![CDATA[第六周作业]]></title>
+            <guid>74ca6fa230ca4e5fbc649b002abdf83b</guid>
+            <pubDate>Sun, 26 May 2024 14:44:40 GMT</pubDate>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#mongodb">mongoDB</a><ul><li><a href="#复制集">复制集</a></li><li><a href="#原理">原理</a><ul><li><a href="#基本信息">基本信息</a></li><li><a href="#选举方式">选举方式</a></li><li><a href="#故障自恢复">故障自恢复</a></li><li><a href="#请求模式">请求模式</a></li></ul></li><li><a href="#案例操作">案例操作</a></li><li><a href="#管理操作">管理操作</a><ul><li><a href="#节点管理">节点管理</a></li><li><a href="#特殊节点管理">特殊节点管理</a></li><li><a href="#主节点降级">主节点降级</a></li><li><a href="#开启从库读取">开启从库读取</a></li></ul></li></ul></li><li><a href="#zookeeper">zookeeper</a><ul><li><a href="#集群架构">集群架构</a></li><li><a href="#集群角色">集群角色</a></li><li><a href="#选举过程">选举过程</a></li><li><a href="#事务日志与快照">事务日志与快照</a></li><li><a href="#环境要求">环境要求</a></li><li><a href="#集群部署">集群部署</a><ul><li><a href="#集群安装">集群安装</a></li><li><a href="#日志检查">日志检查</a></li><li><a href="#端口检查">端口检查</a></li><li><a href="#状态检查">状态检查</a></li></ul></li><li><a href="#命令行访问">命令行访问</a></li><li><a href="#gui访问">GUI访问</a></li><li><a href="#python-sdk访问">python SDK访问</a></li></ul></li><li><a href="#kafka">kafka</a><ul><li><a href="#消息队列">消息队列</a></li><li><a href="#简介">简介</a></li><li><a href="#角色流程">角色流程</a><ul><li><a href="#角色">角色</a></li><li><a href="#流程">流程</a></li></ul></li><li><a href="#部署">部署</a></li><li><a href="#检查">检查</a></li></ul></li></ul></nav><h1 id="mongodb">mongoDB</h1>
+<h2 id="复制集">复制集</h2>
+<blockquote>
+<p>在 <code>MondDB</code> 的主从复制集架构中:<br />
+!!! warning 复制集的职能</p>
+</blockquote>
+<ul>
+<li><strong>数据冗余</strong>：MongoDB复制集通过在多个服务器间自动复制数据实现数据冗余，适用于需要数据备份和灾难恢复的场景。</li>
+<li><strong>高可用性</strong>：MongoDB复制集通过在主节点故障时自动切换到副本节点确保高可用性，适用于需要无中断服务的生产环境。</li>
+<li><strong>自动故障切换</strong>：MongoDB复制集在检测到主节点故障时自动将副本节点提升为主节点，实现快速故障恢复，适用于需要高可靠性的应用程序。<br />
+!!!</li>
+</ul>
+<h2 id="原理">原理</h2>
+<h3 id="基本信息">基本信息</h3>
+<ul>
+<li>主从关系
+<ul>
+<li>仅有<code>一个主节点</code>，其余<code>都是从节点</code></li>
+<li>只有主节点能够<code>写入/读取</code></li>
+<li>从节点能<code>读取数据</code>，但默认只有<code>主节点负责处理请求</code></li>
+</ul>
+</li>
+<li>常见架构
+<ul>
+<li>一主一从</li>
+<li>一主二从</li>
+</ul>
+</li>
+<li>复制本质
+<ul>
+<li>所有的操作都有<code>oplog</code>，从节点定期轮询主节点<code>获取这些操作</code>，然后对自己的数据副本<code>执行这些操作</code>。</li>
+</ul>
+</li>
+<li>主要特征
+<ul>
+<li>N 个<code>奇数节点</code>的集群</li>
+<li>基于选举机制，<code>任何节点可作为主节点</code></li>
+<li>所有写入操作都在主节点上，所以增加节点<code>不会提高系统写性能</code>，可以<code>提升读性能</code></li>
+<li>主节点故障时，会<code>自动选举出新节点代替</code>，<code>自动故障转移</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="选举方式">选举方式</h3>
+<blockquote>
+<p>选举算法：<code>Raft</code></p>
+</blockquote>
+<p>!!! info 角色与操作</p>
+<ul>
+<li>主节点 Master
+<ul>
+<li>数量：1</li>
+<li>作用：
+<ul>
+<li>默认回应<code>读写请求</code></li>
+<li>与<code>副本节点</code>通信同步操作，同步存活信息</li>
+</ul>
+</li>
+<li>失效后：
+<ul>
+<li>触发选举执行</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>副本节点 Secondary
+<ul>
+<li>数量：N (无仲裁者下 N+1 应为奇数)
+<ul>
+<li>最多只能有<code>7个节点有选举权</code>，但副本可大于该数值</li>
+<li><img src="/_resources/72ce64e9f8804fa9b1f5b5e26a0e6451.png" /></li>
+</ul>
+</li>
+<li>作用：
+<ul>
+<li>执行主节点下发操作，维护副本数据</li>
+<li>当主节点故障时，触发选举选定下一个<code>Master</code></li>
+</ul>
+</li>
+<li>失效后：
+<ul>
+<li>不被关心</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>仲裁者 Arbiter
+<ul>
+<li>数量：M (M+N+1 应为奇数)</li>
+<li>作用：
+<ul>
+<li>仅参与选主投票</li>
+<li>不保存数据</li>
+</ul>
+</li>
+<li>失效后：
+<ul>
+<li>不被关心<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!! success 选举流程</p>
+<ol>
+<li>具有投票权的节点之间两两互相发送心跳</li>
+<li>当<code>5次心跳</code>未收到时判断为节点失联</li>
+<li>如果失联的是主节点，从节点会发起选举，选出新的主节点</li>
+<li>如果失联的是从节点则不会产生新的选举</li>
+<li>选举基于RAFT一致性算法实现，选举成功的必要条件是大多数投票节点存活</li>
+<li>复制集中最多可以有50个节点，但具有投票权的节点最多7个，且为奇数个投票成员<br />
+!!!</li>
+</ol>
+<p>!!! warning priority0 节点</p>
+<ul>
+<li>图解
+<ul>
+<li><img src="/_resources/7c1319130e6a4081b22e3b98fb163628.png" /></li>
+</ul>
+</li>
+<li>说明
+<ul>
+<li>默认Priority为1，值最大优先级越高。</li>
+<li>设置Priority为0节点的选举优先级为0，<code>不会被选举为Primary</code>，但可以投票</li>
+</ul>
+</li>
+<li>身份特征
+<ul>
+<li><code>priority:0</code></li>
+</ul>
+</li>
+<li>常见场景
+<ul>
+<li>跨机房A、B部署了一个复制集，并且希望 <code>Primary</code> 必须在 A机房；这时可以将B机房的复制集成员Priority设置为0<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! warning hidden 节点</p>
+<ul>
+<li>图解
+<ul>
+<li><img src="/_resources/56d623daf4cb416a8c5c4b54e8b75de3.png" /></li>
+</ul>
+</li>
+<li>说明
+<ul>
+<li>不接受<code>Driver</code>的请求</li>
+<li><code>不参与选主</code>，也<code>不对外提供服务</code>。</li>
+</ul>
+</li>
+<li>身份特征
+<ul>
+<li>priority:0</li>
+<li><code>hiddent: true</code></li>
+</ul>
+</li>
+<li>常见场景
+<ul>
+<li>做一些数据备份、离线计算的任务，不会影响复制集的服务<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! warning Delayed 节点</p>
+<ul>
+<li>图解
+<ul>
+<li><img src="/_resources/183768eff74642f59a002bce7c6a3589.png" /></li>
+</ul>
+</li>
+<li>说明
+<ul>
+<li>Delayed节点必须是Hidden节点，并且其数据落后与Primary一段时间</li>
+<li><code>不应该提供服务或参与选主</code></li>
+</ul>
+</li>
+<li>身份特征
+<ul>
+<li>priority: 0</li>
+<li>hidden: ture</li>
+<li><code>slaveDelay: 3600</code></li>
+</ul>
+</li>
+<li>常见场景
+<ul>
+<li>延时节点的数据集是延时的，因此它可以帮助我们在人为<code>误操作或是其他意外情况下恢复数据</code>。</li>
+<li>当应用升级失败，或是误操作删除了表和数据库时，可以通过延时节点进行数据恢复<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<h3 id="故障自恢复">故障自恢复</h3>
+<p><img src="/_resources/ec2921b2284a496ea341509e5e8dc79e.png" /></p>
+<ol>
+<li><code>Master</code> 发生故障</li>
+<li>复制集内部会进行投票选举</li>
+<li>一个<code>Secondary</code>替代原有主库对外提供服务</li>
+<li>复制集会自动通知客户端程序主库已切换</li>
+<li>应用就会连接到新的主库</li>
+</ol>
+<h3 id="请求模式">请求模式</h3>
+<blockquote>
+<p>默认情况下，应用程序将其读取操作指向复制集的主节点<br />
+但是，客户端可以通过<code>read preference</code> 模式指定将读取操作发送给到从节点</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Read Preference Mode</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>primary</td>
+<td>主节点，默认模式，读操作只在主节点，如果主节点不可用，报错或者抛出异常。</td>
+</tr>
+<tr>
+<td>primaryPreferred</td>
+<td>首选主节点，大多情况下读操作在主节点，如果主节点不可用，如故障转移，读操作在从节点。</td>
+</tr>
+<tr>
+<td>secondary</td>
+<td>从节点，读操作只在从节点， 如果从节点不可用，报错或者抛出异常。</td>
+</tr>
+<tr>
+<td>secondaryPreferred</td>
+<td>首选从节点，大多情况下读操作在从节点，特殊情况（如单主节点架构）读操作在主节点。</td>
+</tr>
+<tr>
+<td>nearest</td>
+<td>最邻近节点，读操作在最邻近的成员，可能是主节点或者从节点。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="案例操作">案例操作</h2>
+<ol>
+<li>安装<code>mongodb</code></li>
+</ol>
+<div><pre class="hljs"><code><span class="hljs-comment"># 关闭防火墙和SELinux</span>
+setenforce 0
+systemctl stop firewalld
+
+<span class="hljs-comment"># 调整内核HPG</span>
+cat &gt;&gt; /etc/rc.local &lt;&lt;<span class="hljs-string">EOF
+echo never &gt; /sys/kernel/mm/transparent hugepage/enabled
+EOF</span>
+chmod a+x /etc/rc.local
+
+<span class="hljs-comment"># 创建用户</span>
+useradd mongod
+
+<span class="hljs-comment"># 创建目录</span>
+mkdir -p /mongodb/{conf,data,<span class="hljs-built_in">log</span>}
+
+<span class="hljs-comment"># 创建配置文件</span>
+cat &gt; /mongodb/conf/mongo.conf &lt;&lt;<span class="hljs-string">EOF
+systemLog:
+  destination: file
+  path: /mongodb/log/mongodb.log
+  logAppend: true
+storage:
+  dbPath: /mongodb/data/
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+  fork : true
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+security:
+  authorization: disabled
+replication:
+  replSetName: alfieRepl
+EOF</span>
+
+<span class="hljs-comment"># 下载源代码</span>
+wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-rhel80-7.0.11.tgz
+
+<span class="hljs-comment"># 解压包</span>
+tar xf mongodb-linux-x86_64-rhel80-7.0.11.tgz -C /usr/<span class="hljs-built_in">local</span>
+ln -s /usr/<span class="hljs-built_in">local</span>/mongodb-linux-x86_64-rhel80-7.0.11/ /usr/<span class="hljs-built_in">local</span>/mongodb
+
+<span class="hljs-comment"># 设置PATH变量</span>
+<span class="hljs-built_in">echo</span> PATH=/usr/<span class="hljs-built_in">local</span>/mongodb/bin/:<span class="hljs-string">'$PATH'</span> &gt; /etc/profile.d/mongodb.sh
+. /etc/profile.d/mongodb.sh
+
+<span class="hljs-comment"># systemd管理文件</span>
+cat &gt; /lib/systemd/system/mongod.service &lt;&lt;<span class="hljs-string">EOF
+[Unit]
+Description=mongodb
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=forking
+User=mongod
+Group=mongod
+ExecStart=/usr/local/mongodb/bin/mongod --config /mongodb/conf/mongo.conf
+ExecReload=/bin/kill -s HUP \$MAINPID
+ExecStop=/usr/local/mongodb/bin/mongod --config /mongodb/conf/mongo.conf -- shutdown
+PrivateTmp=true
+LimitFSIZE=infinity
+LimitCPU=infinity
+LimitAS=infinity
+LimitNOFILE=64000
+LimitNPROC=64000
+LimitMEMLOCK=infinity
+TasksMax=infinity
+TasksAccounting=false
+
+[Install]
+WantedBy=multi-user.target
+EOF</span>
+
+<span class="hljs-comment"># 文件归属修改</span>
+chown -R mongod:mongod /usr/<span class="hljs-built_in">local</span>/mongodb/
+chown -R mongod:mongod /mongodb/
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl daemon-reload
+systemctl <span class="hljs-built_in">enable</span> --now mongod.service</code></pre></div>
+<ol start="2">
+<li>配置一主二从</li>
+</ol>
+<div><pre class="hljs"><code>mongo --port <span class="hljs-number">27017</span> admin
+
+config = { <span class="hljs-attr">_id</span>: <span class="hljs-string">'alfieRepl'</span>, <span class="hljs-attr">members</span>: [
+{<span class="hljs-attr">_id</span>: <span class="hljs-number">0</span>, <span class="hljs-attr">host</span>: <span class="hljs-string">'192.168.100.101:27017'</span>},
+{<span class="hljs-attr">_id</span>: <span class="hljs-number">1</span>, <span class="hljs-attr">host</span>: <span class="hljs-string">'192.168.100.102:27017'</span>} ,
+{<span class="hljs-attr">_id</span>: <span class="hljs-number">2</span>, <span class="hljs-attr">host</span>: <span class="hljs-string">'192.168.100.103:27017'</span>}]
+}
+
+<span class="hljs-title function_">printjson</span>(config)
+
+rs.<span class="hljs-title function_">initiate</span>(config)
+
+&gt;&gt; <span class="hljs-variable constant_">OR</span>
+rs.<span class="hljs-property">initiate</span> ( )
+rs.<span class="hljs-title function_">add</span>(<span class="hljs-string">"ip.ip.ip.ip:port"</span>)
+...</code></pre></div>
+<p><img src="/_resources/b4f1e19c839c43c78cf72e279de042cc.png" /></p>
+<ol start="3">
+<li>配置一主一从一仲裁</li>
+</ol>
+<div><pre class="hljs"><code>config = { <span class="hljs-attr">_id</span>: <span class="hljs-string">'alfieRepl'</span>, <span class="hljs-attr">members</span>: [
+{<span class="hljs-attr">_id</span>: <span class="hljs-number">0</span>, <span class="hljs-attr">host</span>: <span class="hljs-string">'192.168.100.101:27017'</span>},
+{<span class="hljs-attr">_id</span>: <span class="hljs-number">1</span>, <span class="hljs-attr">host</span>: <span class="hljs-string">'192.168.100.102:27017'</span>} ,
+{<span class="hljs-attr">_id</span>: <span class="hljs-number">2</span>, <span class="hljs-attr">host</span>: <span class="hljs-string">'192.168.100.103:27017'</span>, <span class="hljs-string">"arbiterOnly"</span>: <span class="hljs-literal">true</span>}]
+}
+
+rs.<span class="hljs-title function_">initiate</span>(config)</code></pre></div>
+<ol start="4">
+<li>复制集状态</li>
+</ol>
+<ul>
+<li>rs.hello() // 常规信息<br />
+<img src="/_resources/a6792e56d18b45e1ada3a4058f93e9a6.png" /></li>
+<li>rs.isMaster() // 查主<br />
+<img src="/_resources/345d1c628c36465996b9481c6b40aef9.png" /></li>
+<li>rs.config() // 配置信息<br />
+<img src="/_resources/f18346fbb47341f79f2fb5a499affb3b.png" /></li>
+<li>rs.printSecondaryReplicationInfo()<br />
+<img src="/_resources/37184b37ea1a48b08e900d29a4ceaba7.png" /></li>
+<li>db.printReplicationInfo()<br />
+<img src="/_resources/68917025db9f43c9adda24eabe68a098.png" /></li>
+</ul>
+<h2 id="管理操作">管理操作</h2>
+<h3 id="节点管理">节点管理</h3>
+<ul>
+<li>
+<p>rs.remove ("ip: port") // 删除节点</p>
+<ul>
+<li><img src="/_resources/0ad7c2cdce914ad1b1b3540645177586.png" /></li>
+<li><img src="/_resources/332daf88a12843258e35353d30000530.png" /></li>
+</ul>
+</li>
+<li>
+<p>rs.add ("ip: port")  // 增加节点</p>
+<ul>
+<li><img src="/_resources/f4b52218c9cf4c868300f70f55a55788.png" /></li>
+</ul>
+</li>
+<li>
+<p>rs.addArb ("ip: port") // 增加arb节点</p>
+<ul>
+<li><img src="/_resources/93bf9ed9084f4eafa8de28a01140b34f.png" /></li>
+<li><img src="/_resources/bf679885b4cc4b4686ee02650256940a.png" /></li>
+</ul>
+</li>
+</ul>
+<h3 id="特殊节点管理">特殊节点管理</h3>
+<div><pre class="hljs"><code><span class="hljs-comment">// 获得当前复制集点配置</span>
+config=rs.<span class="hljs-title function_">conf</span>()
+
+<span class="hljs-comment">// 对节点属性进行修改</span>
+<span class="hljs-comment">// 修改节点3为hidden节点</span>
+config.<span class="hljs-property">members</span>[<span class="hljs-number">2</span>].<span class="hljs-property">hidden</span>=<span class="hljs-literal">true</span></code></pre></div>
+<ul>
+<li>config.members[2].hidden=true<br />
+<img src="/_resources/599fa2af5faa462f9e72f855d8903ee6.png" /></li>
+<li>从Hideen节点恢复为常规节点
+<ul>
+<li>config.members[2].hidden=false</li>
+<li>config.members[2].arbiterOnly=false</li>
+<li>config.members[2].priority=1<br />
+<img src="/_resources/54cf876fcade4895b52acc3d5789fa42.png" /><br />
+<img src="/_resources/88515e10c07745c49b98110362c5b5d7.png" /></li>
+<li>由于与此前配置不同需要通过reconfig，删除再添加节点
+<ul>
+<li><img src="/_resources/3a1991e0a6354df09c71991f2d8ff5e7.png" /></li>
+<li><img src="/_resources/d788a679190247cd8e30871f2ba6ecf5.png" /></li>
+<li><img src="/_resources/d8cebb3092ab4ad580f1b5d3234217fe.png" /></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="主节点降级">主节点降级</h3>
+<ul>
+<li>rs.stepDown()<br />
+<img src="/_resources/b5a7e7c4868443c1b5886cedfd8543ca.png" /></li>
+</ul>
+<h3 id="开启从库读取">开启从库读取</h3>
+<div><pre class="hljs"><code>#打开从节点读支持
+#<span class="hljs-number">7</span>版本命令
+db.<span class="hljs-title function_">getMongo</span>().<span class="hljs-title function_">setReadPref</span>(<span class="hljs-string">'secondary'</span>)
+db.<span class="hljs-title function_">getMongo</span>().<span class="hljs-title function_">getReadPref</span>()
+
+#<span class="hljs-number">5</span>版命令
+<span class="hljs-attr">myrepl</span>:<span class="hljs-variable constant_">SECONDARY</span>&gt; rs.<span class="hljs-title function_">secondaryOk</span>()
+
+#旧版命令已废弃
+<span class="hljs-attr">myrepl</span>:<span class="hljs-variable constant_">SECONDARY</span>&gt; rs.<span class="hljs-title function_">slaveOk</span>()</code></pre></div>
+<ul>
+<li>rs.secondaryOK() 已被抛弃<br />
+<img src="/_resources/28bc4e8fcf5c45ffaa65931fe6dbb678.png" /></li>
+<li>7版本的切换命令<br />
+<img src="/_resources/c349465d57ff4d5bbca0d57b58b13685.png" /></li>
+</ul>
+<h1 id="zookeeper">zookeeper</h1>
+<h2 id="集群架构">集群架构</h2>
+<p><img src="/_resources/400aad1a64f241e78c73de1828640e8f.png" /></p>
+<p>!!! tip 基本信息</p>
+<ul>
+<li>
+<p>集群模型</p>
+<ul>
+<li>Master/Slave 模型</li>
+</ul>
+</li>
+<li>
+<p>Master</p>
+<ul>
+<li>负责写操作，同时被称为<code>Leader</code>节点</li>
+</ul>
+</li>
+<li>
+<p>Slave</p>
+<ul>
+<li>负责读操作，同时被称为<code>follower</code>节点</li>
+</ul>
+</li>
+<li>
+<p>写操作同步</p>
+<ul>
+<li>写操作由<code>Master</code>处理完成，再同步给<code>Slave</code>节点</li>
+<li>当写操作大于半数节点时，<code>写操作</code>判定为成功</li>
+</ul>
+</li>
+<li>
+<p>可用性</p>
+<ul>
+<li>当 <code>可用节点 &gt; (总节点数/2) </code> 才认定 <code>zookeeper</code>系统可用</li>
+</ul>
+</li>
+<li>
+<p>性能</p>
+<ul>
+<li><img src="/_resources/459ac9e84f274c3197fac4e805f93678.png" /></li>
+<li><code>增加服务器数量可以提高读请求处理能力</code>，但其效果在服务器数量增加时逐渐减弱。<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<h2 id="集群角色">集群角色</h2>
+<p><img src="/_resources/dc084b33ba0e413da44614440a9251bb.png" /></p>
+<table>
+<thead>
+<tr>
+<th>序号</th>
+<th>状态</th>
+<th>角色</th>
+<th>职责描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>稳定状态</td>
+<td>领导者(Leader)</td>
+<td>负责处理写入请求的，事务请求的<code>唯一调度和处理者</code>,负责进行投票发起和决议，更新系统状态</td>
+</tr>
+<tr>
+<td>2</td>
+<td>稳定状态</td>
+<td>跟随者(Follower)</td>
+<td>接收客户请求并向客户端返回结果，在<code>选Leader过程中参与投票</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>稳定状态</td>
+<td>观察者(Observer)</td>
+<td>转交客户端写请求给leader节点，和同步leader状态。<br class="jop-noMdConv" /> 和Follower唯一区别就是<code>不参与Leader投票</code>,也<code>不参与写操作的"过半写成功"策略</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>中间状态</td>
+<td>学习者(Learner)</td>
+<td>和leader<code>进行状态同步的节点统称Learner</code>，包括:<code>Follower和Observer</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>NA</td>
+<td>客户端(client)</td>
+<td>请求发起方</td>
+</tr>
+</tbody>
+</table>
+<h2 id="选举过程">选举过程</h2>
+<p>!!! info 选举状态和依据</p>
+<ul>
+<li>状态
+<ul>
+<li><code>LOOKING</code>：寻找 <code>Leader</code> 状态，处于该状态需要进入选举流程</li>
+<li><code>LEADING</code>：领导者状态，处于该状态的节点说明是角色已经是 <code>Leader</code></li>
+<li><code>FOLLOWING</code>：跟随者状态，表示 <code>Leader</code> 已经选举出来，当前节点角色是 <code>follower</code></li>
+<li><code>OBSERVER</code>：观察者状态，表明当前节点角色是 <code>observer</code></li>
+</ul>
+</li>
+<li>依据
+<ul>
+<li><code>zxid</code>的优先级高于<code>myid</code>，<code>zxid相同时</code>比较<code>myid</code>大小</li>
+<li><code>zxid</code> (zookeeper transaction id):
+<ul>
+<li>产生方式：代表了该服务器处理的<code>最后一个事务的ID</code></li>
+<li>值含义：值越大表示它的<code>数据最完整</code>，<code>最新</code></li>
+<li><code>zxid</code> 最大的节点优先选为 <code>Leader</code></li>
+</ul>
+</li>
+<li><code>myid</code> 服务器的唯一标识(SID):
+<ul>
+<li>产生方式：通过配置 <code>myid 文件指定</code></li>
+<li>值含义：没特定意义，常用于<code>人为操作选举</code></li>
+<li><code>myid</code> 最大的节点优先选为 <code>Leader</code><br />
+!!!</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!! success 首次选举<br />
+0. 配置文件会决定有选举权限的 zookeeper 节点</p>
+<ol>
+<li>每个zookeeper 的投票中都会<code>包含自己的myid和zxid</code></li>
+<li>每个节点接受并检查对方的投票信息，比如投票时间、是否状态为<code>LOOKING状态的投票</code></li>
+<li>对比投票，优先检查zxid，如果zxid 不一样则 zxid 大的为leader</li>
+<li>如果zxid相同则继续对比myid，myid 大的一方为 leader</li>
+</ol>
+
+				<div>
+					
+					<pre class="mermaid">sequenceDiagram
+    participant ZK1 as ZooKeeper 1 &lt;br&gt;(myid=1, zxid=0x0)
+    participant ZK2 as ZooKeeper 2 &lt;br&gt;(myid=2, zxid=0x0)
+    participant ZK3 as ZooKeeper 3 &lt;br&gt;(myid=3, zxid=0x0)
+    
+    ZK1-&gt;&gt;All: 发出投票 (myid=1, zxid=0x0)
+    ZK2-&gt;&gt;All: 发出投票 (myid=2, zxid=0x0)
+    ZK3-&gt;&gt;All: 发出投票 (myid=3, zxid=0x0)
+    
+    Note right of All: 每个节点接收并检查对方的投票
+    
+    alt 比较 zxid
+        ZK1-&gt;&gt;ZK2: 检查投票 (zxid=0x0)
+        ZK1-&gt;&gt;ZK3: 检查投票 (zxid=0x0)
+        ZK2-&gt;&gt;ZK1: 检查投票 (zxid=0x0)
+        ZK2-&gt;&gt;ZK3: 检查投票 (zxid=0x0)
+        ZK3-&gt;&gt;ZK1: 检查投票 (zxid=0x0)
+        ZK3-&gt;&gt;ZK2: 检查投票 (zxid=0x0)
+        
+        Note right of All: 所有 zxid 相同，比较 myid
+    end
+    
+    alt 比较 myid
+        ZK1-&gt;&gt;ZK2: 检查 myid (myid=1)
+        ZK1-&gt;&gt;ZK3: 检查 myid (myid=1)
+        ZK2-&gt;&gt;ZK1: 检查 myid (myid=2)
+        ZK2-&gt;&gt;ZK3: 检查 myid (myid=2)
+        ZK3-&gt;&gt;ZK1: 检查 myid (myid=3)
+        ZK3-&gt;&gt;ZK2: 检查 myid (myid=3)
+        
+        Note right of All: ZK3 的 myid 最大，成为 leader
+    end
+    
+    ZK1-&gt;&gt;ZK3: 选出 ZK3 作为 Leader
+    ZK2-&gt;&gt;ZK3: 选出 ZK3 作为 Leader
+    ZK3-&gt;&gt;All: 宣布成为 Leader
+
+</pre>
+				</div>
+			<p>!!!</p>
+<p>!!! warning 心跳保持</p>
+<ul>
+<li>保持方式
+<ul>
+<li>利用<code>ping</code>确认对方是否存活</li>
+</ul>
+</li>
+<li>触发重新选举
+<ul>
+<li>当 <code>Leader无法响应PING</code> 时，将重新发起 Leader 选举</li>
+</ul>
+</li>
+<li>Leader无法响应的原因
+<ol>
+<li>网络阻塞</li>
+<li>网络中断</li>
+<li>keepavlive程序故障</li>
+<li>系统崩溃重启</li>
+</ol>
+</li>
+</ul>
+
+				<div>
+					
+					<pre class="mermaid">sequenceDiagram
+    participant Leader
+    participant Follower1
+    participant Follower2
+    
+    Note right of Leader: Leader 定期发送心跳消息 (PING)
+    Leader-&gt;&gt;Follower1: 发送 PING
+    Leader-&gt;&gt;Follower2: 发送 PING
+    
+    Note right of Follower1: Follower1 返回心跳确认 (ACK)
+    Follower1--&gt;&gt;Leader: 返回 ACK
+    
+    Note right of Follower2: Follower2 返回心跳确认 (ACK)
+    Follower2--&gt;&gt;Leader: 返回 ACK
+    
+    Note right of Leader: Leader 检查心跳确认 (ACK)
+    alt 超时未收到 ACK
+        Note right of Leader: 标记 Follower 为失效
+        Leader-&gt;&gt;Follower1: 重新尝试 PING 或标记失效
+    else 收到 ACK
+        Note right of Leader: 标记 Follower 正常
+    end
+    
+    Note right of Follower1: Follower1 定期发送心跳消息 (PING)
+    Follower1-&gt;&gt;Leader: 发送 PING
+    
+    Note right of Follower2: Follower2 定期发送心跳消息 (PING)
+    Follower2-&gt;&gt;Leader: 发送 PING
+    
+    Note right of Leader: 返回心跳确认 (ACK)
+    Leader--&gt;&gt;Follower1: 返回 ACK
+    Leader--&gt;&gt;Follower2: 返回 ACK
+    
+    Note right of Follower1: Follower1 检查心跳确认 (ACK)
+    alt 超时未收到 ACK
+        Note right of Follower1: Follower1 进入 LOOKING 状态
+        Follower1-&gt;&gt;Follower1: 开始新的 Leader 选举
+    else 收到 ACK
+        Note right of Follower1: 标记 Leader 正常
+    end
+    
+    Note right of Follower2: Follower2 检查心跳确认 (ACK)
+    alt 超时未收到 ACK
+        Note right of Follower2: Follower2 进入 LOOKING 状态
+        Follower2-&gt;&gt;Follower2: 开始新的 Leader 选举
+    else 收到 ACK
+        Note right of Follower2: 标记 Leader 正常
+    end
+
+</pre>
+				</div>
+			<p>!!!</p>
+<p>!!! failure 重新选举</p>
+<ul>
+<li>异常情况出现
+<ul>
+<li>ZAB(Zookeeper Atomic Broadcast) 协议就会进入恢复模式并选举产生新的Leader服务器
+<ul>
+<li>ZAB协议是为分布式协调服务 ZooKeeper 专门设计的一种支持崩溃恢复的原子广播协议。</li>
+<li>在ZooKeeper 中，主要依赖 ZAB 协议来实现分布式数据一致性</li>
+<li>基于该协议，ZooKeeper 实现了一种主备模式的系统架构来保持集群中各个副本之间的数据一致性。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+				<div>
+					
+					<pre class="mermaid">sequenceDiagram
+    participant ZK1 as ZooKeeper 1
+    participant ZK2 as ZooKeeper 2
+    participant ZK3 as ZooKeeper 3
+    participant Client as Client
+    
+    Note right of All: Leader Election（选举阶段）
+    ZK1-&gt;&gt;All: 发出选举投票 (myid=1, zxid=0x0)
+    ZK2-&gt;&gt;All: 发出选举投票 (myid=2, zxid=0x0)
+    ZK3-&gt;&gt;All: 发出选举投票 (myid=3, zxid=0x0)
+    
+    Note right of All: ZK3 得到超半数票数，成为准 leader
+    ZK1-&gt;&gt;ZK3: 投票 (myid=1)
+    ZK2-&gt;&gt;ZK3: 投票 (myid=2)
+    
+    Note right of All: Discovery（发现阶段）
+    ZK1-&gt;&gt;ZK3: 同步最近接收的事务提议
+    ZK2-&gt;&gt;ZK3: 同步最近接收的事务提议
+    
+    ZK3-&gt;&gt;ZK1: 确认接收的事务提议
+    ZK3-&gt;&gt;ZK2: 确认接收的事务提议
+    
+    Note right of All: Synchronization（同步阶段）
+    ZK3-&gt;&gt;ZK1: 同步最新提议历史
+    ZK3-&gt;&gt;ZK2: 同步最新提议历史
+    
+    ZK1-&gt;&gt;ZK3: 同步完成确认
+    ZK2-&gt;&gt;ZK3: 同步完成确认
+    
+    Note right of All: 准 leader 成为真正的 leader
+    ZK3-&gt;&gt;All: 宣布成为 Leader
+    
+    Note right of All: Broadcast（广播阶段）
+    ZK3-&gt;&gt;ZK1: 广播事务
+    ZK3-&gt;&gt;ZK2: 广播事务
+    
+    ZK1-&gt;&gt;ZK3: 确认事务
+    ZK2-&gt;&gt;ZK3: 确认事务
+    
+    Client-&gt;&gt;ZK3: 发送请求
+    ZK3-&gt;&gt;ZK1: 广播请求
+    ZK3-&gt;&gt;ZK2: 广播请求
+    
+    ZK1-&gt;&gt;ZK3: 确认请求
+    ZK2-&gt;&gt;ZK3: 确认请求
+    
+    ZK3-&gt;&gt;Client: 返回响应
+    
+    Note right of All: 新节点加入同步
+    participant NewZK as 新节点
+    NewZK-&gt;&gt;ZK3: 请求加入
+    ZK3-&gt;&gt;NewZK: 同步最新提议历史
+    NewZK-&gt;&gt;ZK3: 同步完成确认
+</pre>
+				</div>
+			<p>!!!</p>
+<h2 id="事务日志与快照">事务日志与快照</h2>
+<ul>
+<li>事务产生
+<ul>
+<li>当集群收到<code>写</code>操作时，请求将被转给<code>Leader</code></li>
+<li><code>Leader</code>将把<code>写</code>操作转换为<code>带有状态的事务</code></li>
+</ul>
+</li>
+<li>事物处理
+<ul>
+<li><code>Leader</code>对该<code>写</code>操作进行广播以便进行协调</li>
+<li>当超过半数节点写入<code>表示协调通过</code></li>
+<li><code>Leader</code>将通知服务器节点将不能次写操作应用到<code>内存</code>数据库中</li>
+<li>将该记录写入到<code>事务日志</code>中</li>
+</ul>
+</li>
+<li>快照的产生
+<ul>
+<li>当<code>事务日志</code>达到一定额数量（如10万次）</li>
+<li>将<code>内存数据库序列化</code>永久保存到磁盘中</li>
+<li>序列化后的文件称为<code>快照</code></li>
+<li>拍快照的同时会生成<code>事务日志</code></li>
+</ul>
+</li>
+</ul>
+
+				<div>
+					
+					<pre class="mermaid">sequenceDiagram
+    participant Client as Client
+    participant Follower1 as ZooKeeper Follower1
+    participant Follower2 as ZooKeeper Follower2
+    participant Leader as ZooKeeper Leader
+    
+    Note right of Client: 发送写操作请求
+    Client-&gt;&gt;Follower1: 发送写操作请求
+    
+    Note right of Follower1: 将请求转发给Leader
+    Follower1-&gt;&gt;Leader: 转发写操作请求
+    
+    Note right of Leader: Leader 处理写操作
+    Leader-&gt;&gt;Leader: 将写操作转换为带有状态的事务
+    
+    Note right of Leader: 广播事务给所有Follower
+    Leader-&gt;&gt;Follower1: 广播事务
+    Leader-&gt;&gt;Follower2: 广播事务
+    
+    Note right of All: Follower 接收并确认事务
+    Follower1-&gt;&gt;Leader: 确认事务
+    Follower2-&gt;&gt;Leader: 确认事务
+    
+    Note right of Leader: Leader 收集多数确认
+    alt 大多数节点允许写操作
+        Leader-&gt;&gt;All: 通知所有节点应用写操作
+        Leader-&gt;&gt;Follower1: 应用写操作
+        Leader-&gt;&gt;Follower2: 应用写操作
+        
+        Note right of Follower1: 将写操作应用到内存数据库并记录到事务日志
+        Follower1-&gt;&gt;Follower1: 应用写操作并记录到事务日志
+        
+        Note right of Follower2: 将写操作应用到内存数据库并记录到事务日志
+        Follower2-&gt;&gt;Follower2: 应用写操作并记录到事务日志
+        
+        Leader-&gt;&gt;Leader: 将写操作应用到内存数据库并记录到事务日志
+        
+        Note right of All: 客户端收到写操作成功响应
+        Leader-&gt;&gt;Client: 返回写操作成功响应
+        
+        Note right of All: 事务日志记录达到一定次数
+        alt 达到事务日志阈值 (默认10W次)
+            Note right of All: 将内存数据库序列化保存到磁盘上
+            Leader-&gt;&gt;Disk: 生成快照文件
+            Follower1-&gt;&gt;Disk: 生成快照文件
+            Follower2-&gt;&gt;Disk: 生成快照文件
+        end
+    else 未达到大多数确认
+        Note right of Leader: Leader 返回写操作失败响应
+        Leader-&gt;&gt;Client: 返回写操作失败响应
+    end
+</pre>
+				</div>
+			<h2 id="环境要求">环境要求</h2>
+<p><img src="/_resources/d7d73ec396a14d0285679632224d8221.png" /></p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 最低JDK版本为1.8</span>
+yum install java-1.8.0-openjdk
+
+<span class="hljs-comment"># JDK 11 可使用以下命令</span>
+yum install java-11-openjdk</code></pre></div>
+<h2 id="集群部署">集群部署</h2>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>IP</th>
+<th>zxid</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>s1</td>
+<td>192.168.100.101</td>
+<td>1</td>
+<td>Follower</td>
+</tr>
+<tr>
+<td>s2</td>
+<td>192.168.100.102</td>
+<td>2</td>
+<td>Follower</td>
+</tr>
+<tr>
+<td>s2</td>
+<td>192.168.100.103</td>
+<td>3</td>
+<td>Leader</td>
+</tr>
+</tbody>
+</table>
+<h3 id="集群安装">集群安装</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 最低JDK版本为1.8</span>
+yum install java-1.8.0-openjdk
+
+<span class="hljs-comment"># 下载二进制</span>
+wget https://archive.apache.org/dist/zookeeper/zookeeper-3.9.0/apache-zookeeper-3.9.0-bin.tar.gz
+
+<span class="hljs-comment"># 解压包</span>
+tar xf apache-zookeeper-3.9.0-bin.tar.gz -C /usr/<span class="hljs-built_in">local</span>/
+ln -s /usr/<span class="hljs-built_in">local</span>/apache-zookeeper-3.9.0-bin /usr/<span class="hljs-built_in">local</span>/zookeeper
+
+<span class="hljs-comment"># 路径追加</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">'PATH=/usr/local/zookeeper/bin:$PATH'</span> &gt; /etc/profile.d/zookeeper.sh
+<span class="hljs-built_in">source</span>  /etc/profile.d/zookeeper.sh
+
+<span class="hljs-comment"># 配置文件获得</span>
+cp /usr/<span class="hljs-built_in">local</span>/zookeeper/conf/zoo_sample.cfg /usr/<span class="hljs-built_in">local</span>/zookeeper/conf/zoo.cfg
+
+mkdir /usr/<span class="hljs-built_in">local</span>/zookeeper/data
+<span class="hljs-comment"># 修改配置文件 /usr/local/zookeeper/conf/zoo.cfg </span>
+<span class="hljs-comment"># 格式: server.MyID服务器唯一编号=服务器IP:Leader和Follower的数据同步端口</span>
+sed -i -e <span class="hljs-string">'s!dataDir=.*!dataDir=/usr/local/zookeeper/data!'</span> \
+-e <span class="hljs-string">'$ a server.1=192.168.100.101:2888:3888\nserver.2=192.168.100.102:2888:3888\nserver.3=192.168.100.103:2888:3888'</span> \
+/usr/<span class="hljs-built_in">local</span>/zookeeper/conf/zoo.cfg
+
+<span class="hljs-comment"># 生成ZXID文件</span>
+<span class="hljs-comment"># 各个myid文件的内容要和zoo.cfg文件相匹配</span>
+<span class="hljs-comment"># server1 为1, server2 为2， server3 为3</span>
+<span class="hljs-built_in">echo</span> 1 &gt; /usr/<span class="hljs-built_in">local</span>/zookeeper/data/myid
+
+<span class="hljs-comment"># 启动服务</span>
+zkServer.sh start</code></pre></div>
+<h3 id="日志检查">日志检查</h3>
+<blockquote>
+<p>/usr/local/zookeeper/logs/zookeeper-root-server-s1.out<br />
+<img src="/_resources/cf0b1d273b644674939ede8bb327626d.png" /></p>
+</blockquote>
+<h3 id="端口检查">端口检查</h3>
+<p><img src="/_resources/380fce39b20a45e39ee6a99d0da5ae3d.png" /></p>
+<h3 id="状态检查">状态检查</h3>
+<ul>
+<li>slave 状态，监听<code>3888</code>端口<br />
+<img src="/_resources/a86550daadc64994b18dd3b9c6a5881b.png" /></li>
+<li>master 状态，监听<code>2888</code>,<code>3888</code>端口<br />
+<img src="/_resources/02f0b099f9de4c9499373ae90417e6b3.png" /></li>
+</ul>
+<h2 id="命令行访问">命令行访问</h2>
+<ul>
+<li>进入交互命令
+<ul>
+<li>zkCli.sh -server node:2181<br />
+<img src="/_resources/4fd637354fb347958d1fecb2391ca8d7.png" /></li>
+</ul>
+</li>
+<li>创建节点/查看节点/修改节点/删除节点（默认持久节点）<br />
+<img src="/_resources/2c57a45e22fc445e82b55d2479116ac0.png" /></li>
+<li>查看节点元数据<br />
+<img src="/_resources/b78d5f9a63334cd79c6a4a6ff0705c10.png" /></li>
+<li>查看配置<br />
+<img src="/_resources/a864cd1d0d4b4a8cb7a157503a0a8383.png" /></li>
+</ul>
+<h2 id="gui访问">GUI访问</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 准备终端转发环境</span>
+dnf install xauth -y
+ssh -X root@192.168.100.101
+
+<span class="hljs-comment"># 准备maven环境</span>
+dnf install maven -y
+/etc/maven/settings.xml
+  &lt;mirrors&gt;
+    &lt;mirror&gt;
+      &lt;id&gt;aliyun&lt;/id&gt;
+      &lt;mirrorOf&gt;*&lt;/mirrorOf&gt;
+      &lt;name&gt;Nexus <span class="hljs-keyword">for</span> aliyun&lt;/name&gt;
+      &lt;url&gt;http://maven.aliyun.com/nexus/content/groups/public&lt;/url&gt;
+    &lt;/mirror&gt;
+  &lt;/mirrors&gt;
+
+<span class="hljs-comment"># 下载源代码</span>
+dnf install -y git
+git <span class="hljs-built_in">clone</span> https://github.com/zzhang5/zooinspector.git
+<span class="hljs-built_in">cd</span> zooinspector
+
+<span class="hljs-comment"># 编译安装</span>
+mvn clean package -Dmaven.test.skip=<span class="hljs-literal">true</span>
+
+<span class="hljs-comment"># 图形界面启动</span>
+chmod +x target/zooinspector-pkg/bin/zooinspector.sh
+target/zooinspector-pkg/bin/zooinspector.sh</code></pre></div>
+<p><img src="/_resources/7764f38ab3ac49cda5163a82d0b03459.png" /></p>
+<h2 id="python-sdk访问">python SDK访问</h2>
+<ul>
+<li>准备工作<div><pre class="hljs"><code><span class="hljs-comment"># 安装python和相关库</span>
+dnf install python3 
+pip3 install kazoo</code></pre></div>
+</li>
+<li>测试调用<div><pre class="hljs"><code><span class="hljs-comment">#!/usr/bin/python3</span>
+<span class="hljs-keyword">from</span> kazoo.client <span class="hljs-keyword">import</span> KazooClient
+zk = KazooClient(hosts=<span class="hljs-string">'192.168.100.101:2181'</span>)
+
+zk.start()
+<span class="hljs-comment"># 创建节点：makepath 设置为 True ，父节点不存在则创建，其他参数不填均为默认</span>
+zk.create(<span class="hljs-string">'/zkapp/test'</span>,<span class="hljs-string">b'this is a test'</span>,makepath=<span class="hljs-literal">True</span>)
+
+<span class="hljs-comment"># 操作完后关闭zk连接</span>
+data=zk.get(<span class="hljs-string">'/zkapp/test'</span>)
+<span class="hljs-built_in">print</span>(data)
+zk.stop()</code></pre></div>
+</li>
+</ul>
+<p><img src="/_resources/6c141fda964a4ef2a945a4fb5ef6c634.png" /></p>
+<h1 id="kafka">kafka</h1>
+<h2 id="消息队列">消息队列</h2>
+<blockquote>
+<p>软件之间互相通信如今就像呼吸一样简单，但回到<code>80年代</code>这是一个头疼的事情。<br />
+不同软件之间通信需要实现不同的协议，软件通信没有任何组织可言，面对这个局面。<br />
+有人率先打开局面，既然主机有<code>总线</code>，那么软件之间也可以有，这便诞生了<code>消息队列</code><br />
+<code>消息队列</code>的出现使软件通信出现的曙光，但很快大公司也进来了，各家的<code>消息队列</code>粉末登场各部兼容<br />
+在这个背景下，规范组织插手推出<code>AMQP</code>，消息队列迎来了规范化发展时代</p>
+</blockquote>
+<blockquote>
+<p>主流的消息队列工具: <code>Kafka</code>、<code>RabbitMQ</code>、<code>ActiveMQ</code>、<code>RocketMQ</code>等</p>
+</blockquote>
+<p>!!! tip MQ摘要信息</p>
+<ul>
+<li>本质
+<ul>
+<li>消息队列是一种异步的服务间通信方式</li>
+</ul>
+</li>
+<li>适用场合
+<ul>
+<li>适用于无服务器和微服务架构。</li>
+</ul>
+</li>
+<li>使用方式
+<ul>
+<li>消息在被处理和删除之前一直存储在队列上，每条消息仅可被一位用户处理一次用户处理一次。</li>
+</ul>
+</li>
+<li>业务场景
+<ol>
+<li>重量级访问请求处理(削峰填谷)</li>
+<li>请求按时排队（顺序收发）</li>
+<li>异步通信需求（异步解耦）</li>
+<li>数据分析处理（大数据分析）</li>
+<li>缓存信息降低数据库压力（分布式缓存同步）</li>
+<li>链路访问压力测试（蓄流压测）<br />
+!!!</li>
+</ol>
+</li>
+</ul>
+<h2 id="简介">简介</h2>
+<blockquote>
+<p>Kafka 是一个<code>事件流平台</code>(event streaming platform)</p>
+</blockquote>
+<ul>
+<li>用于<code>发布</code>（写入）和<code>订阅</code>（读取）事件流，包括从其他系统持续导入/导出数据。</li>
+<li>用于持久可靠地<code>存储事件流</code>，只要你需要可以一直保存。</li>
+<li>用于在<code>事件发生时</code>或<code>事后</code>处理事件流。</li>
+</ul>
+<p>!!! tip kafka摘要信息</p>
+<ul>
+<li>
+<p>开发语言:</p>
+<ul>
+<li><code>scala</code> 和 <code>java</code></li>
+</ul>
+</li>
+<li>
+<p>MQ对别<br />
+<img src="/_resources/99ed43bc2b224e9180348874cf62ffda.png" /></p>
+</li>
+<li>
+<p>特点</p>
+<ul>
+<li><code>分布式</code>: 多机实现,不允许单机</li>
+<li><code>分区</code>: 一个消息.可以拆分出多个，分别存储在多个位置</li>
+<li><code>多副本</code>: 防止信息丢失，可以多来几个备份</li>
+<li><code>多订阅者</code>: 可以有很多应用连接kafka</li>
+<li><code>Zookeeper</code>: 早期版本的Kafka依赖于zookeeper, <code>v2.8.0</code> (2021) 后<code>可单独部署</code></li>
+</ul>
+</li>
+<li>
+<p>优势</p>
+<ul>
+<li>优秀的数据结构: 通过 <code>O(1)</code> 的磁盘数据结构提供消息的持久化</li>
+<li>高吞吐量: 支持每秒数百万的消息</li>
+<li>分布式: 基于分布式集群实现高可用的容错机制，可以实现<code>自动的故障转移</code></li>
+<li>顺序保证: 保证数据会按照特定的顺序来处理</li>
+<li>大数据友好: 支持 Hadoop <code>并行数据加载</code></li>
+</ul>
+</li>
+<li>
+<p>常用场景</p>
+<ul>
+<li>大数据<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<h2 id="角色流程">角色流程</h2>
+<h3 id="角色">角色</h3>
+<p>!!! info 操作</p>
+<ul>
+<li>Producer (写)
+<ul>
+<li>Producer即生产者，消息的产生者，是消息的入口。负责发布消息到Kafka</li>
+</ul>
+</li>
+<li>Consumer (读)
+<ul>
+<li>消费者，用于消费消息，即处理消息<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! info 对象</p>
+<ul>
+<li>Broker
+<ul>
+<li>Broker是kafka实例，每个服务器上可以有一个或多个kafka的实例</li>
+<li>Broker需要通过<code>唯一的</code>编号区分</li>
+</ul>
+</li>
+<li>Topic
+<ul>
+<li>消息的主题，可以理解为消息的分类，<code>数据库上的一张表</code></li>
+<li>一个消息即为<code>topic</code>上的一条记录</li>
+<li>一个<code>broker</code>对应多个<code>topic</code></li>
+<li>一个<code>topic</code>可对应多个<code>broker</code> （分布式存放）</li>
+<li><code>consumer</code> 通过 <code>topic</code>访问数据，不关系存放地<code>broker</code></li>
+</ul>
+</li>
+<li>consumer group
+<ul>
+<li><code>consumer</code> 需要属于<code>一个</code>特定的组（不指定则为默认组）</li>
+<li>同一个<code>topic</code>的一条消息只能被一个<code>consumer group</code>一个<code>consuer</code>消费</li>
+<li>多个<code>consumer group</code>可同时消费一个消息<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+<p>!!! info 存储方式</p>
+<ul>
+<li>Partition -- 分区存储提高读取
+<ul>
+<li><code>topic</code>可以拆分为<code>一个或多个</code> <code>Partition</code></li>
+<li>创建<code>topic</code>可指定<code>partition</code>数量</li>
+<li>表现形式为<code>文件夹</code></li>
+<li>目的是实现<code>负载均衡</code>，提高<code>吞吐量</code></li>
+<li>同一个<code>topic</code>在不同的<code>partition</code>唯一</li>
+<li><code>partition</code> 数量应该<code>不超过节点数量</code></li>
+<li><code>partition</code> 没有顺序</li>
+</ul>
+</li>
+<li>Replication -- 分片备份提高可用性
+<ul>
+<li>本质是<code>同样数据的副本</code></li>
+<li>建议设定至少<code>2</code>个</li>
+<li><code>kafka</code>的副本数量<code>包含主分片数</code></li>
+<li>分区角色:
+<ul>
+<li><code>AR</code>(总分片): <code>Assigned Replicas</code> 分区中的所有副本的统称，包括leader和 follower
+<ul>
+<li>AR= lSR+ OSR</li>
+</ul>
+</li>
+<li><code>ISR</code>(可用分片): <code>ln Sync Replicas</code> 与leader副本保持同步的副本 本 follower和leader本身组成的集合</li>
+<li><code>OSR</code>(不可用分片): <code>out-of-Sync Replied</code> 与leader副本同步不能同步的 follower的集合<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p><img src="/_resources/1bbf2a96ffbf474380e0897cdeafebc0.png" /></p>
+<h3 id="流程">流程</h3>
+<p><img src="/_resources/4a6183953a2b4d698f097885741a9477.png" /></p>
+<ol>
+<li><code>produceer</code>从集群中获知<code>leader</code>信息</li>
+<li><code>producer</code>将<code>消息</code>发送给<code>leader</code></li>
+<li><code>leader</code>将消息写入本地文件</li>
+<li><code>follower</code>从<code>leader</code>处<code>pull</code>同步<code>消息</code></li>
+<li><code>follower</code>将<code>消息</code>写入的确认返回给<code>leader</code></li>
+<li><code>leader</code>收到所有<code>replication</code>的确认后，返回<code>producer</code>回复消息已写入</li>
+</ol>
+<h2 id="部署">部署</h2>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>IP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>s1</td>
+<td>192.168.100.101</td>
+</tr>
+<tr>
+<td>s2</td>
+<td>192.168.100.102</td>
+</tr>
+<tr>
+<td>s2</td>
+<td>192.168.100.103</td>
+</tr>
+</tbody>
+</table>
+<p>!!! warning 版本名称</p>
+<blockquote>
+<p>kafka由<code>scale</code>开发，<code>scale</code>存在多版本，因此其版本名称会包含<code>scale</code>版本呢<br />
+<code>kafka_&lt;scala 版本&gt;-&lt;kafka 版本&gt;</code><br />
+目前主流<code>scale</code>版本 <code>2.12 / 2.13</code><br />
+!!!</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># java环境准备 Java8</span>
+yum install java-1.8.0-openjdk
+
+<span class="hljs-comment"># 下载kafka包</span>
+wget https://downloads.apache.org/kafka/3.6.2/kafka_2.13-3.6.2.tgz
+
+<span class="hljs-comment"># 解压链接</span>
+tar xf kafka_2.13-3.6.2.tgz -C /usr/<span class="hljs-built_in">local</span>/
+ln -s /usr/<span class="hljs-built_in">local</span>/kafka_2.13-3.6.2/ /usr/<span class="hljs-built_in">local</span>/kafka
+
+<span class="hljs-comment"># 配置PATH</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">'PATH=/usr/local/kafka/bin:$PATH'</span> &gt; /etc/profile.d/kafka.sh
+<span class="hljs-built_in">source</span> /etc/profile.d/kafka.sh
+
+<span class="hljs-comment"># 修改配置</span>
+vim /usr/<span class="hljs-built_in">local</span>/kafka/config/server.properties
+<span class="hljs-comment">#每个broker在集群中每个节点的正整数唯一标识，此值保存在log.dirs下的meta.properties文件 --&gt; 节点定制修改</span>
+broker.id=1 
+<span class="hljs-comment">#指定当前主机的IP做为监听地址,注意:不支持0.0.0.0 ---&gt; 节点定制修改</span>
+listeners=PLAINTEXT://192.168.100.101:9092 
+<span class="hljs-comment">#kakfa用于保存数据的目录，所有的消息都会存储在该目录当中</span>
+log.dirs=/usr/<span class="hljs-built_in">local</span>/kafka/data 
+<span class="hljs-comment">#设置创建新的topic时默认分区数量,建议和kafka的节点数量一致</span>
+num.partitions=1 
+<span class="hljs-comment">#指定默认的副本数为3，可以实现故障的自动转移</span>
+default.replication.factor=3 
+<span class="hljs-comment">#设置kafka中消息保留时间，默认为168小时即7天</span>
+log.retention.hours=168 
+<span class="hljs-comment">#指定连接的zk的地址,zk中存储了broker的元数据信息 --&gt; 设置相同即可</span>
+zookeeper.connect=192.168.100.101:2181,192.168.100.102:2181,192.168.100.103:2181 
+<span class="hljs-comment">#设置连接zookeeper的超时时间，单位为ms,默认6秒钟</span>
+zookeeper.connection.timeout.ms=6000 
+
+<span class="hljs-comment"># 准备数据目录</span>
+mkdir /usr/<span class="hljs-built_in">local</span>/kafka/data
+
+<span class="hljs-comment"># 调整JAVA内存</span>
+vim /usr/<span class="hljs-built_in">local</span>/kafka/bin/kafka-server-start.sh
+<span class="hljs-keyword">if</span>[ <span class="hljs-string">" x<span class="hljs-variable">$KAFKA_HEAP_OPTS</span>"</span>=<span class="hljs-string">"x"</span>] ; <span class="hljs-keyword">then</span>
+  <span class="hljs-built_in">export</span> KAFKA_HEAP_OPTS=<span class="hljs-string">" -Xmx1G -Xms1G"</span>
+<span class="hljs-keyword">fi</span>
+
+<span class="hljs-comment"># 启动服务</span>
+kafka-server-start.sh -daemon /usr/<span class="hljs-built_in">local</span>/kafka/config/server.properties
+
+<span class="hljs-comment"># 错误查看文件</span>
+/usr/<span class="hljs-built_in">local</span>/kafka/logs/kafkaServer.out
+
+<span class="hljs-comment"># 关闭服务，使用systemd接管</span>
+kafka-server-stop.sh
+
+<span class="hljs-comment"># 准备service文件</span>
+cat &gt; /lib/systemd/system/kafka.service &lt;&lt;<span class="hljs-string">EOF
+[Unit]
+Description=Apache kafka
+After=network.target
+
+[Service]
+Type=simple
+PIDFile=/usr/local/kafka/kafka.pid
+ExecStart=/usr/local/kafka/bin/kafka-server-start.sh /usr/local/kafka/config/server.properties
+ExecStop=/bin/kill -TERM 
+Restart=always
+RestartSec=20
+
+[Installed]
+wantedBy=multi-user.target
+EOF</span>
+
+systemctl daemon-reload
+systemctl start kafka.service</code></pre></div>
+<p><img src="/_resources/960e988a5d1944d79febd6ea772dd403.png" /></p>
+<h2 id="检查">检查</h2>
+<blockquote>
+<p>zookeeper 此时多出 kafka的信息<br />
+<img src="/_resources/774dec40289a4488986a49cb8407adb8.png" /></p>
+</blockquote>
+]]></content:encoded>
+        </item>
         <item>
             <title><![CDATA[第五周作业]]></title>
             <guid>5d1c252ce2fa414e967c0ac378c05689</guid>
             <pubDate>Sun, 12 May 2024 14:14:29 GMT</pubDate>
-            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#keepalived-nginx-高可用">keepalived nginx 高可用</a><ul><li><a href="#创建脚本执行用户">创建脚本执行用户</a></li><li><a href="#nginx代理服务配置">Nginx代理服务配置</a></li><li><a href="#应用服务配置">应用服务配置</a></li><li><a href="#keepalived-服务配置">Keepalived 服务配置</a></li><li><a href="#测试检查">测试检查</a></li></ul></li><li><a href="#keepalived-haproxy-高可用">keepalived haproxy 高可用</a><ul><li><a href="#haproxy-服务配置">HAProxy 服务配置</a></li><li><a href="#应用服务配置-1">应用服务配置</a></li><li><a href="#keepalived-服务配置-1">Keepalived 服务配置</a></li><li><a href="#检查测试">检查测试</a></li></ul></li><li><a href="#redis-集群部署">Redis 集群部署</a><ul><li><a href="#部署">部署</a><ul><li><a href="#安装redis">安装redis</a></li><li><a href="#修改参数">修改参数</a></li><li><a href="#创建集群">创建集群</a></li><li><a href="#验证集群">验证集群</a></li></ul></li></ul></li></ul></nav><h1 id="keepalived-nginx-高可用">keepalived nginx 高可用</h1>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#keepalived-nginx-高可用">keepalived nginx 高可用</a><ul><li><a href="#创建脚本执行用户">创建脚本执行用户</a></li><li><a href="#nginx代理服务配置">Nginx代理服务配置</a></li><li><a href="#应用服务配置">应用服务配置</a></li><li><a href="#keepalived-服务配置">Keepalived 服务配置</a></li><li><a href="#测试检查">测试检查</a></li></ul></li><li><a href="#keepalived-haproxy-高可用">keepalived haproxy 高可用</a><ul><li><a href="#haproxy-服务配置">HAProxy 服务配置</a></li><li><a href="#应用服务配置-1">应用服务配置</a></li><li><a href="#keepalived-服务配置-1">Keepalived 服务配置</a></li><li><a href="#检查测试">检查测试</a></li></ul></li><li><a href="#redis-集群部署">Redis 集群部署</a><ul><li><a href="#部署">部署</a></li></ul></li><li><a href="#cluster-多主节点分区存放">cluster  (多主节点分区存放)</a><ul><li><a href="#数据分布">数据分布</a></li><li><a href="#搭建部署">搭建部署</a><ul><li><a href="#修改参数">修改参数</a></li><li><a href="#创建集群">创建集群</a></li><li><a href="#验证集群">验证集群</a></li></ul></li><li><a href="#集群命令">集群命令</a></li><li><a href="#读写操作">读写操作</a><ul><li><a href="#写入数据">写入数据</a></li><li><a href="#计算slot">计算slot</a></li><li><a href="#集群方式链接">集群方式链接</a></li><li><a href="#python客户端访问">python客户端访问</a></li></ul></li><li><a href="#管理">管理</a><ul><li><a href="#增加slave节点">增加slave节点</a></li><li><a href="#故障迁移">故障迁移</a></li><li><a href="#集群扩容">集群扩容</a></li><li><a href="#集群缩容">集群缩容</a></li><li><a href="#集群倾斜">集群倾斜</a></li></ul></li></ul></li></ul></nav><h1 id="keepalived-nginx-高可用">keepalived nginx 高可用</h1>
 <p>!!! warning SElinux<br />
 该配置需要关闭<code>SELINXU</code>，否则会出现 <code>503</code> 告警。<br />
 <img src="/_resources/dbf08aa9cd4d4fd9bb217974e8feab11.png" /><br />
@@ -272,81 +1551,184 @@ fi</code></pre></div>
 </tr>
 </tbody>
 </table>
-<h3 id="安装redis">安装redis</h3>
-<div><pre class="hljs"><code><span class="hljs-comment"># 关闭SELinux和firewalld</span>
-setenforce 0
-systemctl stop firewalld
+<h1 id="cluster-多主节点分区存放">cluster  (多主节点分区存放)</h1>
+<h2 id="数据分布">数据分布</h2>
+<blockquote>
+<p>解决把<code>整个数据</code>集按照分区规则映射<code>到多个节点</code>的问题，每个节点负责整体数据的子集。</p>
+</blockquote>
+<p>!!! info 分区方式</p>
+<ul>
+<li>哈希分区
+<ul>
+<li>离散度好 / 数据分布与业务无关 / 无法顺序访问</li>
+<li>代表产品： <code>redis cluster</code>，<code>Cassandra</code>， <code>Dynamo</code></li>
+</ul>
+</li>
+<li>顺序分区
+<ul>
+<li>离散度容易倾斜 / 数据分布业务相关 / 可以顺序访问</li>
+<li>代表产品：<code>Bigtable</code>，<code>HBase</code>，<code>Hypertable</code></li>
+</ul>
+</li>
+</ul>
+<p><img src="/_resources/2dbd60324b10451db234e0c59588ea5e.png" /><br />
+!!!</p>
+<p>!!! abstract 哈希分区规则</p>
+<ul>
+<li>
+<p><strong>节点取余分区</strong></p>
+<ul>
+<li>
+<p><strong>说明</strong><br />
+节点取余分区方法通过简单的模运算将数据分布到不同的节点上。</p>
+</li>
+<li>
+<p><strong>算法简述</strong></p>
+<ol>
+<li>计算数据的哈希值 <code>hash(key)</code>。</li>
+<li>用节点的数量 <code>N</code> 对哈希值取模：<code>partition = hash(key) % N</code>。</li>
+<li>将数据分配到 <code>partition</code> 对应的节点。</li>
+</ol>
+</li>
+<li>
+<p><strong>优点</strong></p>
+<ul>
+<li><strong>实现简单</strong>：算法非常直观，易于实现。</li>
+<li><strong>查询性能好</strong>：在节点数量固定的情况下，查询和插入操作的性能都很好。</li>
+</ul>
+</li>
+<li>
+<p><strong>缺点</strong></p>
+<ul>
+<li><strong>扩展性差</strong>：当节点数量变化（增加或减少）时，大部分数据都需要重新分配，导致大量的数据迁移。</li>
+<li><strong>负载不均衡</strong>：如果哈希函数不好，可能导致数据分布不均匀，某些节点负载较高。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>一致性哈希分区</strong></p>
+<ul>
+<li>
+<p><strong>说明</strong><br />
+一致性哈希分区方法通过环形哈希空间和节点的虚拟副本来实现数据的分布和负载均衡。</p>
+</li>
+<li>
+<p><strong>算法简述</strong></p>
+<ol>
+<li>将所有节点映射到一个哈希环上。</li>
+<li>计算数据的哈希值 <code>hash(key)</code> 并将其放置在哈希环上。</li>
+<li>从数据的位置顺时针找到第一个节点，这个节点就是数据的目标节点。</li>
+</ol>
+</li>
+<li>
+<p><strong>优点</strong></p>
+<ul>
+<li><strong>扩展性好</strong>：当节点增加或减少时，只需要重新分配相邻节点的一部分数据，减少了数据迁移量。</li>
+<li><strong>负载均衡</strong>：通过添加虚拟节点，可以改善数据分布的均衡性。</li>
+</ul>
+</li>
+<li>
+<p><strong>缺点</strong></p>
+<ul>
+<li><strong>实现复杂</strong>：相比节点取余分区，一致性哈希的实现要复杂得多。</li>
+<li><strong>性能略低</strong>：由于需要在哈希环上查找节点位置，可能会导致性能稍低。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>虚拟槽分区</strong> <code>redis cluster实现</code></p>
+<ul>
+<li>
+<p><strong>说明</strong><br />
+虚拟槽分区方法通过将哈希空间划分为固定数量的槽，并将这些槽映射到实际节点上。</p>
+</li>
+<li>
+<p><strong>算法简述</strong></p>
+<ol>
+<li>将哈希空间分成固定数量的槽（如 <code>M</code> 个）。</li>
+<li>计算数据的哈希值 <code>hash(key)</code> 并将其映射到某个槽：<code>slot = hash(key) % M</code>。</li>
+<li>将槽映射到实际的节点：<code>partition = slot_to_node(slot)</code>。</li>
+</ol>
+</li>
+<li>
+<p><strong>优点</strong></p>
+<ul>
+<li><strong>扩展性好</strong>：增加或减少节点时，只需重新分配一部分槽到新的节点，数据迁移量适中。</li>
+<li><strong>负载均衡</strong>：通过合理地分配槽，可以实现较为均衡的负载分布。</li>
+</ul>
+</li>
+<li>
+<p><strong>缺点</strong></p>
+<ul>
+<li><strong>实现复杂</strong>：需要实现槽到节点的映射管理，增加了系统的复杂度。</li>
+<li><strong>管理开销</strong>：需要维护槽和节点之间的映射关系，增加了系统的管理开销。<br />
+!!!</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!! danger redis虚拟槽位信息<br />
+设置有<code>0 ~ 16383</code>的槽，共 <code>16384</code> 个数据单元，每个槽映射一个数据子集。<br />
+通过hash函数，将数据存放在不同的槽位中，每个集群的节点保存一部分的槽。</p>
+<p><img src="/_resources/90f402256bf144aea7c7d4eeb45220f0.png" /></p>
+<blockquote>
+<p>集群之间的通信可以保证，最多两次就能命中对应槽所在的节点。<br />
+!!!</p>
+</blockquote>
+<h2 id="搭建部署">搭建部署</h2>
+<blockquote>
+<p>需要先部署redis集群<br />
+<a>0xff redis/脚本使用#个人源安装脚本</a></p>
+</blockquote>
+<p><img src="/_resources/ae607bd1a778464690c422cac7904d12.png" /></p>
+<table>
+<thead>
+<tr>
+<th>主机</th>
+<th>ip</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>s2</td>
+<td>192.168.100.102</td>
+</tr>
+<tr>
+<td>s3</td>
+<td>192.168.100.103</td>
+</tr>
+<tr>
+<td>s4</td>
+<td>192.168.100.104</td>
+</tr>
+</tbody>
+</table>
+<h3 id="修改参数">修改参数</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 修改配置文件</span>
+<span class="hljs-comment"># 以下与cluster相关，按需开启</span>
+<span class="hljs-comment"># -e '/# cluster-enabled yes/a cluster-enabled yes' \</span>
+<span class="hljs-comment"># -e '/# cluster-config-file nodes-6379.conf/a cluster-config-file nodes-6379.conf' \</span>
+<span class="hljs-comment"># -e '/cluster-require-full-coverage yes/a cluster-require-full-coverage no' \</span>
 
-<span class="hljs-comment"># 下载源代码包</span>
-<span class="hljs-comment"># github拥有最新的版本</span>
-<span class="hljs-comment">#wget -O redis.7.2.2.tar.gz https://github.com/redis/redis/archive/refs/tags/7.2.2.tar.gz</span>
-<span class="hljs-comment"># http://download.redis.io/releases/</span>
-wget http://download.redis.io/releases/redis-7.2.2.tar.gz
-
-<span class="hljs-comment"># 环境准备</span>
-yum -y install gcc make jemalloc-devel systemd-devel
-
-<span class="hljs-comment"># 解压安装</span>
-tar -xvf redis-7.2.2.tar.gz
-<span class="hljs-built_in">cd</span> redis-7.2.2
-mkdir -p /apps/redis
-make -j 2 USE_SYSTEMD=yes PREFIX=/apps/redis install
-
-<span class="hljs-comment"># 环境变量更新</span>
-<span class="hljs-built_in">echo</span> <span class="hljs-string">'PATH=/apps/redis/bin:$PATH'</span> &gt; /etc/profile.d/redis.sh
-. /etc/profile.d/redis.sh
-
-<span class="hljs-comment"># 自定义配置文件，日志，数据存放目录</span>
-mkdir /apps/redis/{etc,<span class="hljs-built_in">log</span>,data,run}
-cp /root/redis-7.2.2/redis.conf /apps/redis/etc/
-
-<span class="hljs-comment"># 日志配置</span>
-sed <span class="hljs-string">'s/logfile/logfile "/apps/redis/log/6379_redis.log"/'</span> /apps/redis.conf
-
-<span class="hljs-comment"># 用户创建</span>
-useradd -r -s /sbin/nologin redis
-chown -R redis.redis /apps/redis/
-
-<span class="hljs-comment"># 内核修复</span>
-sed -i <span class="hljs-string">'$ a\net.core.somaxconn = 1024'</span> /etc/sysctl.conf &amp;&amp; sysctl -p
-sed -i <span class="hljs-string">'$ a\vm.overcommit_memory = 1'</span> /etc/sysctl.conf &amp;&amp; sysctl -p
-
-<span class="hljs-comment"># 服务文件</span>
-<span class="hljs-comment"># /lib/systemd/system/redis.service</span>
-cat &gt; /lib/systemd/system/redis.service &lt;&lt;<span class="hljs-string">EOF
-[Unit]
-Description=Redis persistent key-value database
-After=network.target
-
-[Service]
-ExecStart=/apps/redis/bin/redis-server /apps/redis/etc/redis.conf --supervised systemd
-ExecStop=/bin/kill -s QUIT $MAINPID
-Type=notify
-User=redis
-Group=redis
-RuntimeDirectory=redis
-RuntimeDirectoryMode=0755
-LimitNOFILE=1000000
-
-[Install]
-WantedBy=multi-user.target
-EOF</span>
+sed -i.bak \
+-e <span class="hljs-string">'s/appendonly no/appendonly yes/'</span> \
+-e <span class="hljs-string">'/masterauth/a masterauth alopex'</span> \
+-e <span class="hljs-string">'s/bind 127.0.0.1/bind 0.0.0.0/'</span>  \
+-e <span class="hljs-string">"/# requirepass/a requirepass alopex"</span> \
+-e <span class="hljs-string">"/^dir .*/c dir /apps/redis/data/"</span>  \
+-e <span class="hljs-string">"/logfile .*/c logfile /apps/redis/log/redis-6379.log"</span> \
+-e <span class="hljs-string">"/^pidfile .*/c  pidfile /apps/redis/run/redis_6379.pid"</span> \
+-e <span class="hljs-string">'/# cluster-enabled yes/a cluster-enabled yes'</span> \
+-e <span class="hljs-string">'/# cluster-config-file nodes-6379.conf/a cluster-config-file /apps/redis/etc/nodes-6379.conf'</span> \
+-e <span class="hljs-string">'/cluster-require-full-coverage yes/a cluster-require-full-coverage no'</span> \
+/apps/redis/etc/redis.conf
 
 <span class="hljs-comment"># 启动服务</span>
 systemctl daemon-reload
 systemctl <span class="hljs-built_in">enable</span> --now redis</code></pre></div>
-<h3 id="修改参数">修改参数</h3>
-<div><pre class="hljs"><code>sed -i.bak \
--e <span class="hljs-string">'s/bind 127.0.0.1/bind 0.0.0.0/'</span>  \
--e <span class="hljs-string">'/masterauth/a masterauth alopex'</span> \
--e <span class="hljs-string">"/^dir .*/c dir /apps/redis/data/"</span>  \
--e <span class="hljs-string">"/logfile .*/c logfile /apps/redis/log/redis-6379.log"</span> \
--e  <span class="hljs-string">"/^pidfile .*/c  pidfile /apps/redis/run/redis_6379.pid"</span> \
--e <span class="hljs-string">"/# requirepass/a requirepass alopex"</span> \
--e <span class="hljs-string">'/# cluster-enabled yes/a cluster-enabled yes'</span> \
--e <span class="hljs-string">'/# cluster-config-file nodes-6379.conf/a cluster-config-file nodes-6379.conf'</span> \
--e <span class="hljs-string">'/cluster-require-full-coverage yes/a cluster-require-full-coverage no'</span> \
-/apps/redis/etc/redis.conf</code></pre></div>
 <h3 id="创建集群">创建集群</h3>
 <blockquote>
 <p>集群功能已开启<br />
@@ -383,6 +1765,266 @@ redis-cli -a alopex --cluster create 192.168.100.102:6379 192.168.100.103:6379 1
 <p>任意节点状态查看<br />
 <img src="/_resources/080ae31c141c4219aca5fa734967b25d.png" /></p>
 </blockquote>
+<blockquote>
+<p>查看node-port.conf日志<br />
+<img src="/_resources/8a0ec890f9f64b59bf72200041aea0ee.png" /></p>
+</blockquote>
+<blockquote>
+<p>查看对应关系<br />
+<img src="/_resources/90b41a2d4dee4869b81e24891a246210.png" /></p>
+</blockquote>
+<h2 id="集群命令">集群命令</h2>
+<div><pre class="hljs"><code><span class="hljs-comment">// 集群(cluster)  </span>
+CLUSTER INFO                                打印集群的状态信息  
+CLUSTER NODES                               列出集群当前已知的所有节点（node），以及这些节点的相关信息 
+
+<span class="hljs-comment">// 节点(node)  </span>
+CLUSTER MEET &lt;ip&gt; &lt;port&gt;                    将ip和port所指定的节点添加到集群当中，让它成为集群的一份子
+CLUSTER FORGET &lt;node_id&gt;                    从集群中移除node_id指定的节点
+CLUSTER REPLICATE &lt;node_id&gt;                 将当前节点设置为node_id指定节点的从节点
+CLUSTER SAVECONFIG                          将当前节点的配置信息手动保存到硬盘（nodes-port.conf） 
+CLUSTER SLAVES &lt;master_node_id&gt;             查询指定的master_node_id主节点有哪些从（slave）节点
+
+<span class="hljs-comment">// 槽(slot)  </span>
+CLUSTER ADDSLOTS &lt;slot&gt; [slot ...]          将一个或多个槽（slot）指派（assign）给当前节点
+CLUSTER DELSLOTS &lt;slot&gt; [slot ...]          将一个或多个槽从当前节点移除
+CLUSTER FLUSHSLOTS                          移除指派给当前节点的所有槽，让当前节点变成一个没有指派任何槽的节点
+CLUSTER SETSLOT &lt;slot&gt; NODE &lt;node_id&gt;       将当前节点指定的槽（slot）指派给node_id指定的节点，如果槽已经指派给另一个节点，那么先让另一个节点删除该槽，然后再进行指派
+CLUSTER SETSLOT &lt;slot&gt; MIGRATING &lt;node_id&gt;  将当前节点指定的槽（slot）迁移到node_id指定的节点中
+CLUSTER SETSLOT &lt;slot&gt; IMPORTING &lt;node_id&gt;  从node_id指定节点中的槽（slot）导入到当前节点
+CLUSTER SETSLOT &lt;slot&gt; STABLE               取消对当前节点指定槽（slot）的导入（import）或者迁移（migrate）
+CLUSTER SLOTS                               查看槽（slot）在集群中的分配情况
+
+<span class="hljs-comment">// 键 (key)  </span>
+CLUSTER KEYSLOT &lt;key&gt;                       计算键key应该被分配在哪个槽上  
+CLUSTER COUNTKEYSINSLOT &lt;slot&gt;              返回指定槽（slot）保存key的数量  
+CLUSTER GETKEYSINSLOT &lt;slot&gt; &lt;count&gt;        获取指定槽（slot）中count个key，如果指定槽中大于count个key，则只返回前<span class="hljs-built_in">cout</span>个key，小于或为空，则返回最多数量的key </code></pre></div>
+<h2 id="读写操作">读写操作</h2>
+<h3 id="写入数据">写入数据</h3>
+<ul>
+<li>
+<p>流程图<br />
+<img src="/_resources/0813f71424fe4908a017f95c67848f24.png" /></p>
+</li>
+<li>
+<p>写入实例<br />
+<img src="/_resources/a2ab59b781f94d9aaf7fda7dfa4fd79f.png" /></p>
+</li>
+</ul>
+<h3 id="计算slot">计算slot</h3>
+<ul>
+<li><code>keyslot KEY</code><br />
+<img src="/_resources/a6c0c8b71c8c49b7b7a271828b1b2e3f.png" /></li>
+</ul>
+<h3 id="集群方式链接">集群方式链接</h3>
+<ul>
+<li><code>-c</code> 自动实现slot重定向<br />
+<img src="/_resources/7370510502b14c0fbd2040d5ef610fef.png" /></li>
+</ul>
+<h3 id="python客户端访问">python客户端访问</h3>
+<blockquote>
+<p>需要先使用 pip 安装 <code>redis-py-cluster</code><br />
+<a>0xff redis/脚本使用#cluster调用</a></p>
+</blockquote>
+<blockquote>
+<p>测试结果可见分布较为平均<br />
+<img src="/_resources/7c39be6a5a8841c6b824a1fec908fca9.png" /></p>
+</blockquote>
+<h2 id="管理">管理</h2>
+<h3 id="增加slave节点">增加slave节点</h3>
+<ol>
+<li><a>0xff redis/脚本使用#源安装脚本</a></li>
+<li><a title="#%E4%BF%AE%E6%94%B9%E5%8F%82%E6%95%B0" href="#%E4%BF%AE%E6%94%B9%E5%8F%82%E6%95%B0">修改参数</a></li>
+<li>查询master节点的 master-id
+<blockquote>
+<p>redis-cli -h 127.0.0.1 -a alopex --no-auth-warning cluster nodes<br />
+<img src="/_resources/6ac6c0e35a8543a38119a695af3bf404.png" /></p>
+</blockquote>
+</li>
+<li>添加 slave 节点<div><pre class="hljs"><code>redis-cli -a &lt;auth-passwd&gt; \
+--cluster add-node &lt;current-slave-node:6379&gt; &lt;oneof-cluster-node:6379&gt; \
+--cluster-slave --cluster-master-id &lt;cluster-master-id&gt;</code></pre></div>
+<img src="/_resources/1187f064af4640d69ca023d2ab1746e7.png" /></li>
+<li>确认新增 slave<br />
+<img src="/_resources/23df5f2ea33541618fe07d4b6321ff4b.png" /><br />
+<img src="/_resources/1c6d4bba41c04581bbcca5c67f6d808b.png" /></li>
+</ol>
+<h3 id="故障迁移">故障迁移</h3>
+<ul>
+<li>
+<p>全master集群 （无容错能力，节点故障后数据丢失）<br />
+<img src="/_resources/fb1ec9a577e44a59bd1fa8b39230b678.png" /></p>
+<ul>
+<li>需要实现故障迁移，应在设计至少使用<code>6台主机</code>或为其增加<code>slave</code>节点<div><pre class="hljs"><code>redis-cli -a <span class="hljs-number">123456</span> --cluster-replicas \
+--cluster-replicas \
+--cluster create <span class="hljs-number">10.0.0.18</span>:<span class="hljs-number">6379 10.0</span>.<span class="hljs-number">0.28:6379</span> <span class="hljs-number">10.0.0.58</span>:<span class="hljs-number">6379</span> \
+<span class="hljs-number">10.0.0.8</span>:<span class="hljs-number">6379 10.0</span>.<span class="hljs-number">0.38:6379</span> <span class="hljs-number">10.0.0.48</span>:<span class="hljs-number">6379</span></code></pre></div>
+</li>
+</ul>
+</li>
+<li>
+<p>拥有slave节点的master节点故障 (拥有容错能力，主节点故障后slave节点会顶替工作)</p>
+<ul>
+<li><img src="/_resources/877139df2eb8409bb45bec622a9c1c16.png" /></li>
+<li><img src="/_resources/869d89fecd23456fb239298271015218.png" /></li>
+</ul>
+</li>
+</ul>
+<h3 id="集群扩容">集群扩容</h3>
+<p>!!! success 场景思路</p>
+<blockquote>
+<p>场景：现有的Redis cluster架构已经无法满足越来越高的并发访问请求，需要添加新的主机提高并发能力。<br />
+思路：先添加节点，在扩展槽位，最后为master加上slave。<br />
+!!!</p>
+</blockquote>
+<p>!!! warning master数量<br />
+注意: 生产环境一般建议master节点为<code>奇数</code>个,比如:<code>3,5,7</code>,以防止脑裂现象</p>
+<p>&lt; 本地为实验环境，为方便操作仅添加一台master，凑成4台master。&gt;<br />
+!!!</p>
+<ul>
+<li>步骤图解<br />
+<img src="/_resources/379e373510bb4987a7e2364c8517e651.png" /><br />
+<img src="/_resources/856df059cbb746b5b75831d9a0954e58.png" /></li>
+</ul>
+<p>!!! info 实际操作<br />
+0. 查看当前 <code>slot</code> 分配信息<br />
+<img src="/_resources/2ef43085795c4773a1a4c37435dd6a22.png" /><br />
+2. 准备新的redis节点，配置使用cluster配置<br />
+<a>0xff redis/脚本使用#个人源安装脚本</a><br />
+<a title="#%E4%BF%AE%E6%94%B9%E5%8F%82%E6%95%B0" href="#%E4%BF%AE%E6%94%B9%E5%8F%82%E6%95%B0">修改参数</a><br />
+2. 添加新的master节点到集群<br />
+<code> 	redis-cli -a &lt;auth-passwd&gt; --cluster add-node &lt;current-node-ip:6379&gt; &lt;oneof-cluster-node-ip:6379&gt; 	</code><br />
+<img src="/_resources/58c028a04a924d6399c6442fb098cbc6.png" /><br />
+3. 检查是新节点是否连接<br />
+&gt; redis-cli -h 192.168.100.102 -a alopex --no-auth-warning --cluster info 192.168.100.101:6379<br />
+<img src="/_resources/abf41bb7073042468bc3764b678ae164.png" /><br />
+4. 重新分配 <code>slot</code> （仅5+版本支持在线扩容，旧版本需要备份、清空槽数据、再恢复）<br />
+<code> 	redis-cli -a &lt;auth-passwd&gt; --cluster reshard &lt;oneof-cluster-node-ip&gt;:6379 	</code><br />
+* slot数量<br />
+* 需要分配的 <code>slot</code> 数量 (16384/master个数)<br />
+* 接收slot的ID<br />
+* 新的master的ID (没有<code>slot</code>的主机，新加入的主机)<br />
+* 接收slot的策略 (新增选择 <code>ALL</code>)<br />
+* <strong>使用 "all"</strong>：当你想要将集群中所有现有节点都指定为哈希槽的源节点时，你会使用 "all"。<br />
+* 这在你<code>向集群添加新节点时很有用</code>，你希望现有节点将它们的哈希槽<code>均匀地分配给它们自己和新节点</code>。<br />
+* <strong>使用 "done"</strong>：当你<code>完成手动输入所有源节点ID的任务</code>时，你会使用 "done"。<br />
+* 这表示你已经完成了指定哈希槽重新分配的源节点的任务。<br />
+5. 检查新的 <code>slot</code> 分配信息<br />
+<img src="/_resources/c5b46beb6e124feb994296b0dcd601a0.png" /><br />
+6. 如集群中需要从节点，可选择对slave扩容<br />
+<a title="#%E5%A2%9E%E5%8A%A0slave%E8%8A%82%E7%82%B9" href="#%E5%A2%9E%E5%8A%A0slave%E8%8A%82%E7%82%B9">增加slave节点</a><br />
+!!!</p>
+<h3 id="集群缩容">集群缩容</h3>
+<p>!!! success 场景思路</p>
+<blockquote>
+<p>场景：随着业务萎缩用户量下降明显，redis服务器负载出现闲置，需要对其进行资源释放<br />
+思路：再回收槽位，删除主节点，最后删除从节点。<br />
+!!!</p>
+</blockquote>
+<p>!!! info 实际操作<br />
+0. 当前集群情况 (master:4, slave:1)<br />
+<img src="/_resources/f3ad8277303c40d5872211bcf89b59fd.png" /><br />
+<img src="/_resources/6d25f75aa16f43148f77cd50b385f4ab.png" /></p>
+<ol>
+<li>
+<p>回收槽位</p>
+<div><pre class="hljs"><code>redis-<span class="hljs-keyword">cli</span> -a &lt;auth-passwd&gt; --<span class="hljs-keyword">cluster</span> reshard &lt;oneof-<span class="hljs-keyword">cluster</span>-node-ip&gt;:6379</code></pre></div>
+<ul>
+<li>slot数量
+<ul>
+<li>需要分配的 <code>slot</code> 数量 (回收主机拥有slot数/回收后master数量 --&gt; 4096/3=1365)</li>
+<li>此处使用了均分的方式，因此每次<code>只移动1/3</code>的slot</li>
+</ul>
+</li>
+<li>接受slot的ID (选择用于回收slot的master ID，多master可以任选)
+<ul>
+<li>用于接收释放的 <code>slot</code></li>
+</ul>
+</li>
+<li>回收slot的策略 (删除写入<code>需要删除的节点</code>--&gt;<code>Done</code>)
+<ul>
+<li><strong>使用 "all"</strong>：当你想要将集群中所有现有节点都指定为哈希槽的源节点时，你会使用 "all"。
+<ul>
+<li>这在你<code>向集群添加新节点时很有用</code>，你希望现有节点将它们的哈希槽<code>均匀地分配给它们自己和新节点</code>。</li>
+</ul>
+</li>
+<li><strong>使用 "done"</strong>：当你<code>完成手动输入所有源节点ID的任务</code>时，你会使用 "done"。
+<ul>
+<li>这表示你已经完成了指定哈希槽重新分配的源节点的任务。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>交互式执行 (1次)
+<ul>
+<li><img src="/_resources/4e95461006de41bb8426ed5920148c21.png" /></li>
+</ul>
+</li>
+<li>非交互形式执行 (2次)<div><pre class="hljs"><code>redis-cli -a &lt;auth-passwd&gt; --cluster reshard 192.168.100.102:6379 \
+--cluster-slots 1365 --cluster-from &lt;node-need-to-delete-ID&gt; \
+--cluster-to &lt;node-will-receive-slot-ID&gt; --cluster-yes
+
+eg:
+<span class="hljs-comment"># 103 接收 101 放弃的 1365 个 slot </span>
+redis-cli -a alopex --cluster reshard 192.168.100.102:6379 \
+--cluster-slots 1365 --cluster-from af550d85cf75582eb485b7c06924f22a8a1a8a87 \
+--cluster-to 56ae4fbb871e4fb8a47cb06ef39d4387751efb60 --cluster-yes
+
+<span class="hljs-comment"># 104 接收 101 放弃的 1366 个 slot </span>
+redis-cli -a alopex --cluster reshard 192.168.100.102:6379 \
+--cluster-slots 1366 --cluster-from af550d85cf75582eb485b7c06924f22a8a1a8a87 \
+--cluster-to ee5da0388305257fee5b553ae56751e10ec344a8 --cluster-yes</code></pre></div>
+</li>
+</ul>
+</li>
+<li>
+<p>确认slot已被回收</p>
+<blockquote>
+<p>redis-cli -h 127.0.0.1 -a alopex --no-auth-warning --cluster check 192.168.100.108:6379<br />
+可以看到此前的 101 和 108 默认成为了 104 的 slave<br />
+<img src="/_resources/93eec57ddea74ef6aee1e06547917777.png" /><br />
+<img src="/_resources/455c780d2d934cc2be1858f20df14665.png" /></p>
+</blockquote>
+</li>
+<li>
+<p>删除slave节点</p>
+<blockquote>
+<p>redis-cli -a &lt;\auth-passwd&gt; --cluster del-node &lt;\oneof-cluster-node&gt;:6379 &lt;\slave-node-need-to-del-ID&gt;<br />
+<img src="/_resources/8c2d81c82c794eb5ae84d8029dc3f94a.png" /></p>
+</blockquote>
+</li>
+<li>
+<p>节点信息更新</p>
+<blockquote>
+<p>redis-cli -a &lt;\auth-passwd&gt; --no-auth-warning cluster nodes<br />
+<img src="/_resources/562a75690aa2485599b3235ae26cbb36.png" /><br />
+!!!</p>
+</blockquote>
+</li>
+</ol>
+<h3 id="集群倾斜">集群倾斜</h3>
+<blockquote>
+<p>场景：多个节点运行一段时间后,可能会出现倾斜现象,某个节点数据偏多,内存消耗更大,</p>
+</blockquote>
+<ul>
+<li>
+<p>原因：</p>
+<ul>
+<li>节点和槽分配不均</li>
+<li>不同槽对应键值数量差异较大</li>
+<li>包含bigkey,建议少用</li>
+<li>内存相关配置不一致</li>
+<li>热点数据不均衡 : 一致性不高时,可以使用本缓存和MQ</li>
+</ul>
+</li>
+<li>
+<p>解决方式</p>
+<ul>
+<li>执行自动的槽位重新平衡分布,但<code>会影响客户端的访问</code></li>
+<li>redis-cli --cluster rebalance &lt;集群节点IP:PORT&gt;</li>
+</ul>
+</li>
+</ul>
 ]]></content:encoded>
         </item>
         <item>
