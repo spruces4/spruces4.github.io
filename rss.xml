@@ -4,14 +4,14 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Sun, 26 May 2024 14:52:39 GMT</lastBuildDate>
+        <lastBuildDate>Fri, 31 May 2024 14:07:52 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
         <item>
             <title><![CDATA[第六周作业]]></title>
             <guid>74ca6fa230ca4e5fbc649b002abdf83b</guid>
             <pubDate>Sun, 26 May 2024 14:44:40 GMT</pubDate>
-            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#mongodb">mongoDB</a><ul><li><a href="#复制集">复制集</a></li><li><a href="#原理">原理</a><ul><li><a href="#基本信息">基本信息</a></li><li><a href="#选举方式">选举方式</a></li><li><a href="#故障自恢复">故障自恢复</a></li><li><a href="#请求模式">请求模式</a></li></ul></li><li><a href="#案例操作">案例操作</a></li><li><a href="#管理操作">管理操作</a><ul><li><a href="#节点管理">节点管理</a></li><li><a href="#特殊节点管理">特殊节点管理</a></li><li><a href="#主节点降级">主节点降级</a></li><li><a href="#开启从库读取">开启从库读取</a></li></ul></li></ul></li><li><a href="#zookeeper">zookeeper</a><ul><li><a href="#集群架构">集群架构</a></li><li><a href="#集群角色">集群角色</a></li><li><a href="#选举过程">选举过程</a></li><li><a href="#事务日志与快照">事务日志与快照</a></li><li><a href="#环境要求">环境要求</a></li><li><a href="#集群部署">集群部署</a><ul><li><a href="#集群安装">集群安装</a></li><li><a href="#日志检查">日志检查</a></li><li><a href="#端口检查">端口检查</a></li><li><a href="#状态检查">状态检查</a></li></ul></li><li><a href="#命令行访问">命令行访问</a></li><li><a href="#gui访问">GUI访问</a></li><li><a href="#python-sdk访问">python SDK访问</a></li></ul></li><li><a href="#kafka">kafka</a><ul><li><a href="#消息队列">消息队列</a></li><li><a href="#简介">简介</a></li><li><a href="#角色流程">角色流程</a><ul><li><a href="#角色">角色</a></li><li><a href="#流程">流程</a></li></ul></li><li><a href="#部署">部署</a></li><li><a href="#检查">检查</a></li></ul></li></ul></nav><h1 id="mongodb">mongoDB</h1>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#mongodb">mongoDB</a><ul><li><a href="#复制集">复制集</a></li><li><a href="#原理">原理</a><ul><li><a href="#基本信息">基本信息</a></li><li><a href="#选举方式">选举方式</a></li><li><a href="#故障自恢复">故障自恢复</a></li><li><a href="#请求模式">请求模式</a></li></ul></li><li><a href="#案例操作">案例操作</a></li><li><a href="#管理操作">管理操作</a><ul><li><a href="#节点管理">节点管理</a></li><li><a href="#特殊节点管理">特殊节点管理</a></li><li><a href="#主节点降级">主节点降级</a></li><li><a href="#开启从库读取">开启从库读取</a></li></ul></li></ul></li><li><a href="#zookeeper">zookeeper</a><ul><li><a href="#集群架构">集群架构</a></li><li><a href="#集群角色">集群角色</a></li><li><a href="#选举过程">选举过程</a></li><li><a href="#事务日志与快照">事务日志与快照</a></li><li><a href="#环境要求">环境要求</a></li><li><a href="#集群部署">集群部署</a><ul><li><a href="#集群安装">集群安装</a></li><li><a href="#日志检查">日志检查</a></li><li><a href="#端口检查">端口检查</a></li><li><a href="#状态检查">状态检查</a></li></ul></li><li><a href="#命令行访问">命令行访问</a></li><li><a href="#gui访问">GUI访问</a></li><li><a href="#python-sdk访问">python SDK访问</a></li></ul></li><li><a href="#kafka">kafka</a><ul><li><a href="#消息队列">消息队列</a></li><li><a href="#简介">简介</a></li><li><a href="#角色流程">角色流程</a><ul><li><a href="#角色">角色</a></li><li><a href="#流程">流程</a></li></ul></li><li><a href="#部署">部署</a></li><li><a href="#检查">检查</a></li></ul></li><li><a href="#操作">操作</a><ul><li><a href="#写入操作">写入操作</a><ul><li><a href="#创建topic">创建topic</a></li><li><a href="#发送消息">发送消息</a></li><li><a href="#删除topic">删除topic</a></li></ul></li><li><a href="#读取数据">读取数据</a><ul><li><a href="#查看topic">查看topic</a></li><li><a href="#验证topic">验证topic</a></li><li><a href="#消费消息">消费消息</a></li></ul></li><li><a href="#gui查看">GUI查看</a></li></ul></li></ul></nav><h1 id="mongodb">mongoDB</h1>
 <h2 id="复制集">复制集</h2>
 <blockquote>
 <p>在 <code>MondDB</code> 的主从复制集架构中:<br />
@@ -1284,6 +1284,89 @@ systemctl start kafka.service</code></pre></div>
 <p>zookeeper 此时多出 kafka的信息<br />
 <img src="/_resources/774dec40289a4488986a49cb8407adb8.png" /></p>
 </blockquote>
+<h1 id="操作">操作</h1>
+<h2 id="写入操作">写入操作</h2>
+<h3 id="创建topic">创建topic</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 创建一个名为 `alfie` 的topic</span>
+<span class="hljs-comment"># 为其创建 3 个分区， 每个分区2个副本 =&gt; (3分区，每个分区存放1个主分片，1个备用分片)</span>
+kafka-topics.sh --create --topic alfie \
+--bootstrap-server 192.168.100.101:9092 \
+--partitions 3 --replication-factor 2
+</code></pre></div>
+<h3 id="发送消息">发送消息</h3>
+<div><pre class="hljs"><code>kafka-console-producer.sh --broker-list \
+192.168.100.101:9092,192.168.100.102:9092,192.168.100.103:9092 \
+--topic alfie
+
+&lt; 以下来自标准输入 &gt;
+&gt; alfie-msg1
+&gt; alfie-msg2
+&gt;...</code></pre></div>
+<h3 id="删除topic">删除topic</h3>
+<div><pre class="hljs"><code>kafka-topics.sh --delete \
+--bootstrap-server 192.168.100.101:9092,192.168.100.102:9092,192.168.100.103:9092 \
+--topic alfie</code></pre></div>
+<h2 id="读取数据">读取数据</h2>
+<h3 id="查看topic">查看topic</h3>
+<div><pre class="hljs"><code>kafka-topics.sh --list --bootstrap-server 192.168.100.101:9092
+&gt; alfie
+
+<span class="hljs-comment"># 与 server.properties 中 log.dirs 路径相关</span>
+<span class="hljs-comment"># 查看节点1内容 (节点2,节点3 也是1个主分区1个副本分区)</span>
+ls /tmp/kafka-logs/alfie*
+/tmp/kafka-logs/alfie-0:
+00000000000000000000.index  00000000000000000000.timeindex  partition.metadata
+00000000000000000000.log    leader-epoch-checkpoint
+
+/tmp/kafka-logs/alfie-1:
+00000000000000000000.index  00000000000000000000.timeindex  partition.metadata
+00000000000000000000.log    leader-epoch-checkpoint</code></pre></div>
+<p><img src="/_resources/fecef377308f456ebce281ab8decb37e.png" /></p>
+<h3 id="验证topic">验证topic</h3>
+<div><pre class="hljs"><code>kafka-topics.sh --describe \
+--bootstrap-server 192.168.100.101:9092 --topic alfie
+
+Topic: alfie	TopicId: 1U7iI3psRz-ffGDRpT_IpQ	PartitionCount: 3	ReplicationFactor: 2	Configs: 
+    Topic: alfie	Partition: 0	Leader: 1	Replicas: 1,3	Isr: 1,3
+    Topic: alfie	Partition: 1	Leader: 2	Replicas: 2,1	Isr: 2,1
+    Topic: alfie	Partition: 2	Leader: 3	Replicas: 3,2	Isr: 3,2</code></pre></div>
+<h3 id="消费消息">消费消息</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># --from-beginning  表示消费前发布的消息也能收到，默认只能收到消费后发布的新消息</span>
+kafka-console-consumer.sh --topic alfie \
+--bootstrap-server 192.168.100.101:9092
+--from-beginning
+
+&lt;以下来自标准输出&gt;
+alfie-msg1
+alfie-msg2
+
+<span class="hljs-comment"># 作为group1的成员，如果该消费者消费了，同组的其他成员将无法消费</span>
+<span class="hljs-comment"># 不会像上一条命令，可以多次通过 `--from-beginning` 多次重复消费</span>
+kafka-console-consumer.sh --topic alfie \
+--bootstrap-server 192.168.100.101:9092 \
+--consumer-property group.id=group1 \
+--from-beginning</code></pre></div>
+<h2 id="gui查看">GUI查看</h2>
+<p><img src="/_resources/adc502a333da436e9cadb0eb9114d88e.png" /></p>
+<blockquote>
+<p><code>Offset Explorer</code> 旧称<code>Kafka Tool</code>，工具是一个 GUI 应用程序，用于管理和使用 Apache Kafka 群集。</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 版本要求</span>
+&gt; 仅支持java11或以上 2024/05/31 (version 3.0)
+
+<span class="hljs-comment"># 安装offset explorer</span>
+wget https://www.kafkatool.com/download3/offsetexplorer.sh
+bash offsetexplorer.sh</code></pre></div>
+<p><img src="/_resources/9f8db4be42d044c1a207d051bda85332.png" /></p>
+<p><img src="/_resources/97a90ec4c02443b5ae7efcb65f798201.png" /></p>
+<p><img src="/_resources/5dcdb92a6d754a87800bfc2689aba613.png" /></p>
+<p><img src="/_resources/a0b75ee8aa6b437488ae7d1cb25665ba.png" /></p>
+<p><img src="/_resources/0b28b954d75749239e76503a39a7789e.png" /></p>
+<p><img src="/_resources/7e45857cbb35435eaabee6b98660a8b8.png" /></p>
+<p><img src="/_resources/7718f8f734b04c4ebe84ada6519c4d9e.png" /></p>
+<p><img src="/_resources/6e037eff8e2a4748abdf5b81e6cab2b5.png" /></p>
+<p><img src="/_resources/12582a96e6cb498e9018e3fc1dbbe7c4.png" /></p>
+<p><img src="/_resources/0ef06d2ee28f4294b901459ae206b0dd.png" /></p>
 ]]></content:encoded>
         </item>
         <item>
