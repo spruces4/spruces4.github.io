@@ -4,9 +4,665 @@
         <title></title>
         <link>undefined</link>
         <description>undefined</description>
-        <lastBuildDate>Fri, 31 May 2024 14:07:52 GMT</lastBuildDate>
+        <lastBuildDate>Mon, 03 Jun 2024 13:33:33 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>Joplin Pages Publisher</generator>
+        <item>
+            <title><![CDATA[第七周作业]]></title>
+            <guid>846efcb63789449b8f5c6a31f186af76</guid>
+            <pubDate>Mon, 03 Jun 2024 13:20:20 GMT</pubDate>
+            <content:encoded><![CDATA[<nav class="table-of-contents"><ul><li><a href="#tomcat-日志收集">tomcat 日志收集</a><ul><li><a href="#tomcat-跨行错误日志-es">Tomcat 跨行错误日志 -&gt; ES</a><ul><li><a href="#拓扑图">拓扑图</a></li><li><a href="#修改配置">修改配置</a><ul><li><a href="#安装tomcat">安装tomcat</a></li><li><a href="#filebeat配置">filebeat配置</a></li></ul></li><li><a href="#验证配置">验证配置</a></li><li><a href="#gui查看">GUI查看</a></li><li><a href="#kibana查看">Kibana查看</a></li></ul></li></ul></li><li><a href="#nginx-syslog-日志收集">nginx、syslog 日志收集</a><ul><li><a href="#架构信息">架构信息</a><ul><li><a href="#架构图">架构图</a></li><li><a href="#架构表">架构表</a></li></ul></li><li><a href="#nginx-安装配置">Nginx 安装配置</a></li><li><a href="#redis-安装配置">Redis 安装配置</a></li><li><a href="#elastic-search-集群部署配置">Elastic search 集群部署配置</a><ul><li><a href="#节点拓扑">节点拓扑</a></li><li><a href="#安装软件">安装软件</a></li><li><a href="#配置">配置</a></li><li><a href="#开启服务">开启服务</a></li><li><a href="#elasticvue访问查看">elasticvue访问查看</a></li></ul></li><li><a href="#kibana-安装配置">Kibana 安装配置</a><ul><li><a href="#应用安装">应用安装</a></li><li><a href="#配置修改">配置修改</a></li><li><a href="#启动服务">启动服务</a></li></ul></li><li><a href="#访问">访问</a><ul><li><a href="#登录查看">登录查看</a></li><li><a href="#状态查看">状态查看</a></li></ul></li><li><a href="#filebeat-安装配置">Filebeat 安装配置</a><ul><li><a href="#nginx">nginx</a></li><li><a href="#syslog">syslog</a></li><li><a href="#检查启动">检查启动</a></li></ul></li><li><a href="#logstash-安装配置">Logstash 安装配置</a><ul><li><a href="#安装">安装</a></li><li><a href="#配置-1">配置</a></li></ul></li><li><a href="#验证查看">验证查看</a><ul><li><a href="#检查redis已有数据进入">检查redis已有数据进入</a></li><li><a href="#查看elasticesearch集群">查看elasticesearch集群</a></li><li><a href="#创建试图">创建试图</a></li><li><a href="#过滤日志">过滤日志</a></li></ul></li><li><a href="#问题">问题</a><ul><li><a href="#filebeat-nginx日志被投递到默认的key未投送到指定key中">filebeat nginx日志被投递到默认的key未投送到指定key中</a></li><li><a href="#index-创建成功但没有数据">index 创建成功但没有数据</a></li></ul></li></ul></li></ul></nav><h1 id="tomcat-日志收集">tomcat 日志收集</h1>
+<h2 id="tomcat-跨行错误日志-es">Tomcat 跨行错误日志 -&gt; ES</h2>
+<blockquote>
+<p>tomcat 运行会在<code>catalina.out / catalina.YYYY-mm-DD.log</code> 上生成大量的启动日志<br />
+这些启动日志与其他日志相比具有<code>跨行</code>的特性，采集它们需要用到特殊<code>pattern匹配</code></p>
+</blockquote>
+<p><img src="/_resources/0335da9d77054d83b7c12a44aaafd0ec.png" /><br />
+<a title="https://www.elastic.co/guide/en/beats/filebeat/current/multiline-examples.html" href="https://www.elastic.co/guide/en/beats/filebeat/current/multiline-examples.html">ref</a></p>
+<h3 id="拓扑图">拓扑图</h3>
+<p><img src="/_resources/47e1af5e1e9a407b91b489df4da72ebe.png" /></p>
+<h3 id="修改配置">修改配置</h3>
+<h4 id="安装tomcat">安装tomcat</h4>
+<div><pre class="hljs"><code>dnf install tomcat9 tomcat-*
+&gt; Package tomcat-admin-webapps-1:9.0.62-30.el8.noarch
+&gt; Package tomcat-docs-webapp-1:9.0.62-30.el8.noarch
+&gt; Package tomcat-webapps-9.0.62-30.el8.noarch.rpm</code></pre></div>
+<h4 id="filebeat配置">filebeat配置</h4>
+<div><pre class="hljs"><code><span class="hljs-comment"># /etc/filebeat/tomcat-catalina.yml</span>
+
+<span class="hljs-attr">filebeat.inputs:</span>
+<span class="hljs-bullet">-</span> <span class="hljs-attr">type:</span> <span class="hljs-string">log</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">paths:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">/var/log/tomcat/catalina.*.log</span>
+  <span class="hljs-attr">tags:</span> [<span class="hljs-string">"tomcat-catalina-log"</span>]
+  <span class="hljs-attr">processors:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">dissect:</span>
+        <span class="hljs-attr">tokenizer:</span> <span class="hljs-string">'<span class="hljs-template-variable">%{date}</span> <span class="hljs-template-variable">%{time}</span> <span class="hljs-template-variable">%{catalina.warnLevel}</span> [<span class="hljs-template-variable">%{catalina.method}</span>] <span class="hljs-template-variable">%{catalina.class}</span> <span class="hljs-template-variable">%{catalina.logMessage}</span>'</span>
+        <span class="hljs-attr">field:</span> <span class="hljs-string">"message"</span>
+  <span class="hljs-attr">multiline.type:</span> <span class="hljs-string">pattern</span>
+  <span class="hljs-attr">multiline.pattern:</span> <span class="hljs-string">'^[[:space:]]+(at|\.{3})[[:space:]]+\b|^Caused by:'</span>
+  <span class="hljs-attr">multiline.negate:</span> <span class="hljs-literal">false</span>
+  <span class="hljs-attr">multiline.match:</span> <span class="hljs-string">after</span>
+
+<span class="hljs-attr">output.elasticsearch:</span>
+  <span class="hljs-attr">hosts:</span> [<span class="hljs-string">"192.168.100.104:9200"</span>,<span class="hljs-string">"192.168.100.105:9200"</span>,<span class="hljs-string">"192.168.100.106:9200"</span>]
+  <span class="hljs-attr">indices:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">index:</span> <span class="hljs-string">"tomcat-catalina-<span class="hljs-template-variable">%{[agent.version]}</span>-<span class="hljs-template-variable">%{+yyy.MM.dd}</span>"</span>
+    <span class="hljs-attr">when.contains:</span>
+      <span class="hljs-attr">tags:</span> <span class="hljs-string">"tomcat-catalina-log"</span>
+
+<span class="hljs-attr">setup.ilm.enabled:</span> <span class="hljs-literal">false</span>
+<span class="hljs-attr">setup.template.name:</span> <span class="hljs-string">"tomcat-catalina"</span>
+<span class="hljs-attr">setup.template.pattern:</span> <span class="hljs-string">"tomcat-catalina-*"</span></code></pre></div>
+<ul>
+<li>正则表达<a title="https://regexper.com/#%5Cs%2B%28at%7C%5C.%7B3%7D%29%5Cs%2B%5Cb%7C%5ECaused%20by%3A" href="https://regexper.com/#%5Cs%2B%28at%7C%5C.%7B3%7D%29%5Cs%2B%5Cb%7C%5ECaused%20by%3A">图解</a><br />
+<img src="/_resources/a452a47918e546319eda568eb0c0f012.png" /></li>
+</ul>
+<h3 id="验证配置">验证配置</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 验证配置文件</span>
+filebeat <span class="hljs-built_in">test</span> config -c /etc/filebeat/tomcat-catalina.yml
+
+<span class="hljs-comment"># 启动服务</span>
+filebeat -e -c /etc/filebeat/tomcat-catalina.yml</code></pre></div>
+<h3 id="gui查看">GUI查看</h3>
+<p><img src="/_resources/d4008cc1e56547708aeffa435387006c.png" /><br />
+<img src="/_resources/70595a546f174cb2a0e695ecbe477493.png" /></p>
+<h3 id="kibana查看">Kibana查看</h3>
+<p><img src="/_resources/b758c8a584ad40b894b1541e5a0a03b5.png" /></p>
+<blockquote>
+<p>通过字段解析获得查能力<br />
+<img src="/_resources/01f422ffa5c1496a9ba01930b1efe8e4.png" /></p>
+</blockquote>
+<blockquote>
+<p>通过全文查询获得合并日志<br />
+<img src="/_resources/f6f53f3648d341af8ed0cca15d189eac.png" /></p>
+</blockquote>
+<hr />
+<h1 id="nginx-syslog-日志收集">nginx、syslog 日志收集</h1>
+<h2 id="架构信息">架构信息</h2>
+<h3 id="架构图">架构图</h3>
+<p><img src="/_resources/485fa414dcf34f5784b8efd43932bfd7.png" /></p>
+<h3 id="架构表">架构表</h3>
+<table>
+<thead>
+<tr>
+<th>编号</th>
+<th>主机名</th>
+<th>OS</th>
+<th>IP</th>
+<th>功能</th>
+<th>安装工具</th>
+<th>服务端口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>viewer</td>
+<td>Ubuntu22.04.1 LTS (Jammy Jellyfish)</td>
+<td>192.168.100.24</td>
+<td>客户端访问 <br class="jop-noMdConv" />系统日志收集</td>
+<td>curl <br class="jop-noMdConv" />Filebeat 8.13.4</td>
+<td>NA</td>
+</tr>
+<tr>
+<td>2</td>
+<td>s0</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.100</td>
+<td>Nginx 服务器 <br class="jop-noMdConv" />Filebeat Nginx日志收集</td>
+<td>nginx 1.14.1 <br class="jop-noMdConv" />Filebeat 8.13.4</td>
+<td>http:80</td>
+</tr>
+<tr>
+<td>3</td>
+<td>s4</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.104</td>
+<td>Elastic 服务器</td>
+<td>elastic 8.13.4</td>
+<td>http:9200, tcp:9300</td>
+</tr>
+<tr>
+<td>4</td>
+<td>s5</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.105</td>
+<td>Elastic 服务器</td>
+<td>elastic 8.13.4</td>
+<td>http:9200, tcp:9300</td>
+</tr>
+<tr>
+<td>5</td>
+<td>s6</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.106</td>
+<td>Elastic 服务器</td>
+<td>elastic 8.13.4</td>
+<td>http:9200, tcp:9300</td>
+</tr>
+<tr>
+<td>6</td>
+<td>s7</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.107</td>
+<td>kibana 服务器</td>
+<td>kibana 8.13.4</td>
+<td>http:5601</td>
+</tr>
+<tr>
+<td>7</td>
+<td>s8</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.108</td>
+<td>redis 服务器</td>
+<td>redis 5.0.3</td>
+<td>tcp: 6379</td>
+</tr>
+<tr>
+<td>8</td>
+<td>s9</td>
+<td>Rocky8.7 (Green Obsidian)</td>
+<td>192.168.100.109</td>
+<td>Logstash 服务器</td>
+<td>Logstash 8.13.4</td>
+<td>NA</td>
+</tr>
+</tbody>
+</table>
+<h2 id="nginx-安装配置">Nginx 安装配置</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 安装服务</span>
+dnf install nginx
+
+<span class="hljs-comment"># 修改日志为JSON格式</span>
+log_format access_json <span class="hljs-string">'{"@timestamp":"$time_iso8601",'</span>
+                       <span class="hljs-string">'"host":"$server_addr",'</span>
+                       <span class="hljs-string">'"clientip":"$remote_addr",'</span>               
+                       <span class="hljs-string">'"size":$body_bytes_sent,'</span>
+                       <span class="hljs-string">'"responsetime":$request_time,'</span>
+                       <span class="hljs-string">'"upstreamtime":"$upstream_response_time",'</span>
+                       <span class="hljs-string">'"upstreamhost":"$upstream_addr",'</span>
+                       <span class="hljs-string">'"http_host":"$host",'</span>
+                       <span class="hljs-string">'"uri":"$uri",'</span>
+                       <span class="hljs-string">'"domain":"$host",'</span>
+                       <span class="hljs-string">'"xff":"$http_x_forwarded_for",'</span>
+                       <span class="hljs-string">'"referer":"$http_referer",'</span>
+                       <span class="hljs-string">'"tcp_xff":"$proxy_protocol_addr",'</span>
+                       <span class="hljs-string">'"http_user_agent":"$http_user_agent",'</span>
+                       <span class="hljs-string">'"status":"$status"}'</span>;
+access_log  /var/<span class="hljs-built_in">log</span>/nginx/access.log  access_json;
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl start nginx.service</code></pre></div>
+<h2 id="redis-安装配置">Redis 安装配置</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 安装redis</span>
+dnf install redis
+
+<span class="hljs-comment"># 配置redis </span>
+<span class="hljs-comment"># 修改其监听所有地址及修改登录密码为 alfiecheung</span>
+sed -i.bak -e <span class="hljs-string">'s/^bind.*/bind 0.0.0.0/'</span> \
+-e <span class="hljs-string">"s/# requirepass foobared.*/requirepass alfiecheung/g"</span> \
+/etc/redis.conf
+
+<span class="hljs-comment"># 启动rredis</span>
+systemctl start redis.service</code></pre></div>
+<h2 id="elastic-search-集群部署配置">Elastic search 集群部署配置</h2>
+<h3 id="节点拓扑">节点拓扑</h3>
+<table>
+<thead>
+<tr>
+<th>节点</th>
+<th>角色</th>
+<th>IP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>s4</td>
+<td>eligible</td>
+<td>192.168.100.104</td>
+</tr>
+<tr>
+<td>s5</td>
+<td>eligible</td>
+<td>192.168.100.105</td>
+</tr>
+<tr>
+<td>s6</td>
+<td>Master</td>
+<td>192.168.100.106</td>
+</tr>
+</tbody>
+</table>
+<h3 id="安装软件">安装软件</h3>
+<div><pre class="hljs"><code>wget https://mirrors.tuna.tsinghua.edu.cn/elasticstack/8.x/yum/8.13.4/elasticsearch-8.13.4-x86_64.rpm
+
+rpm -ivh elasticsearch-8.13.4-x86_64.rpm</code></pre></div>
+<p><img src="/_resources/25c7d685f079449d9cfec72b15ae4bdf.png" /></p>
+<h3 id="配置">配置</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># /etc/elasticsearch/jvm.options</span>
+-Xms1G
+-Xmx1G
+
+<span class="hljs-comment"># /etc/security/limits.conf</span>
+elasticsearch  soft  memlock  unlimited
+elasticsearch  hard  memlock  unlimited
+
+<span class="hljs-comment"># /usr/lib/systemd/system/elasticsearch.service</span>
+[Service]
+LimitMEMLOCK=infinity
+
+<span class="hljs-comment"># /etc/elasticsearch/elasticsearch.yml</span>
+<span class="hljs-comment"># 每部主机唯一</span>
+node.name: es-node1
+<span class="hljs-comment"># 同集群使用同一个名称</span>
+cluster.name: alfie-elk-cluster
+<span class="hljs-comment"># 准备进行选举的主机都添加于此或直接指定master</span>
+<span class="hljs-comment"># cluster.initial_master_nodes: ["192.168.100.104"]</span>
+discovery.seed_hosts: [<span class="hljs-string">"192.168.100.104"</span>,<span class="hljs-string">"192.168.100.105"</span>,<span class="hljs-string">"192.168.100.106"</span>]
+<span class="hljs-comment"># 集群监听端口对应的IP，默认是127.0.0.1:9300</span>
+network.host: 0.0.0.0
+<span class="hljs-comment"># es服务监听地址，默认端口 9200</span>
+http.host: 0.0.0.0
+
+path.data: /var/lib/elasticsearch
+path.logs: /var/<span class="hljs-built_in">log</span>/elasticsearch
+
+<span class="hljs-comment"># 如果不关闭 xpack.security.enabled, 则需要按照如何方式访问</span>
+<span class="hljs-comment"># 开启后需要使用https访问 (curl -k -u elastic:PWD https://localhost:9200)</span>
+<span class="hljs-comment"># 密码来自安装软件首次自动生成的信息 (如下所示)</span>
+<span class="hljs-comment"># The generated password for the elastic built-in superuser is : w4yD7JEths_3e8pUbIqt</span>
+xpack.security.enabled: <span class="hljs-literal">false</span>
+xpack.security.enrollment.enabled: <span class="hljs-literal">true</span>
+xpack.security.http.ssl:
+  enabled: <span class="hljs-literal">true</span>
+  keystore.path: certs/http.p12
+xpack.security.transport.ssl:
+  enabled: <span class="hljs-literal">true</span>
+  verification_mode: certificate
+  keystore.path: certs/transport.p12
+  truststore.path: certs/transport.p12
+
+<span class="hljs-comment"># 内存优化配合上述 limits.conf 和  elasticsearch.service 配合修改生效</span>
+bootstrap.memory_lock: <span class="hljs-literal">true</span></code></pre></div>
+<h3 id="开启服务">开启服务</h3>
+<div><pre class="hljs"><code>systemctl daemon-reload
+systemctl start elasticsearch.service
+
+<span class="hljs-comment"># 检查日志</span>
+tail -f /var/<span class="hljs-built_in">log</span>/elasticsearch
+
+<span class="hljs-comment"># 访问测试</span>
+curl -k -u elastic:PWD https://localhost:9200</code></pre></div>
+<p><img src="/_resources/28ce2c8843c949abafda12475bc44e0c.png" /></p>
+<p><img src="/_resources/f11a5deb470348a0a02dd9e4cc4d4b87.png" /></p>
+<p><img src="/_resources/86118fc61d0d4a9aaab60f058aef96e7.png" /></p>
+<h3 id="elasticvue访问查看">elasticvue访问查看</h3>
+<p><img src="/_resources/80cf95d1b98941c89722764f0bbc8399.png" /><br />
+<img src="/_resources/8404ac9170e141f685cac52cbbe7416f.png" /><br />
+<img src="/_resources/fb9b84376eb749f8bb1fbacef0614e29.png" /></p>
+<h2 id="kibana-安装配置">Kibana 安装配置</h2>
+<h3 id="应用安装">应用安装</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 下载包</span>
+    <span class="hljs-comment"># 官网：https://www.elastic.co/cn/downloads/elasticsearch</span>
+    <span class="hljs-comment"># deb包</span>
+    wget https://mirrors.tuna.tsinghua.edu.cn/elasticstack/8.x/apt/pool/main/k/kibana/kibana-8.13.4-amd64.deb
+
+    <span class="hljs-comment"># rpm包</span>
+    wget https://mirrors.tuna.tsinghua.edu.cn/elasticstack/8.x/yum/8.13.4/kibana-8.13.4-x86_64.rpm
+
+<span class="hljs-comment"># 安装包</span>
+    dpkg -i kibana-8.13.4-amd64.deb
+    rpm -ivh kibana-8.13.4-x86_64.rpm</code></pre></div>
+<p><img src="/_resources/11233612d17c44e8b651d088c4f1081b.png" /></p>
+<h3 id="配置修改">配置修改</h3>
+<div><pre class="hljs"><code>&gt; 文件路径：/etc/kibana/kibana.yml 
+
+<span class="hljs-comment"># 监听端口,此为默认值</span>
+server.port: 5601
+
+<span class="hljs-comment"># 修改此行的监听地址,默认为localhost，即：127.0.0.1:5601</span>
+server.host: "0.0.0.0"
+
+<span class="hljs-comment"># 修改此行,指向ES任意服务器地址或多个节点地址实现容错,默认为localhost</span>
+elasticsearch.hosts: <span class="hljs-section">["http://10.0.0.101:9200","http://10.0.0.102:9200","http://10.0.0.103:9200"]</span>
+
+<span class="hljs-comment"># 语言支持，默认为英文可以修改为中文（zh-CN）</span>
+i18n.locale: "en"
+
+<span class="hljs-comment"># 设置 Kibana 对外提供服务时的基础 URL，往往设定为反向代理</span>
+server.publicBaseUrl: "http://kibana-rerver-server.com"</code></pre></div>
+<h3 id="启动服务">启动服务</h3>
+<div><pre class="hljs"><code>systemctl daemon-reload
+systemctl start kibana.service</code></pre></div>
+<h2 id="访问">访问</h2>
+<h3 id="登录查看">登录查看</h3>
+<blockquote>
+<p><a title="http://192.168.100.107:5601" href="http://192.168.100.107:5601">http://192.168.100.107:5601</a><br />
+<img src="/_resources/2e36724b0d994246a5d2f9168db9f32a.png" /></p>
+</blockquote>
+<h3 id="状态查看">状态查看</h3>
+<blockquote>
+<p><a title="http://192.168.100.107:5601/status" href="http://192.168.100.107:5601/status">http://192.168.100.107:5601/status</a><br />
+<img src="/_resources/c747de4721cf42d39905328c9c72b3d5.png" /></p>
+</blockquote>
+<h2 id="filebeat-安装配置">Filebeat 安装配置</h2>
+<h3 id="nginx">nginx</h3>
+<div><pre class="hljs"><code>wget https://mirrors.tuna.tsinghua.edu.cn/elasticstack/8.x/yum/8.13.4/filebeat-8.13.4-x86_64.rpm
+rpm -ivh filebeat-8.13.4-x86_64.rpm</code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-comment"># /etc/filebeat/filebeat.yml</span>
+<span class="hljs-comment"># 测试不能使用tag区分创建连个key，使用filed注入可以</span>
+
+<span class="hljs-attr">filebeat.inputs:</span>
+<span class="hljs-bullet">-</span> <span class="hljs-attr">type:</span> <span class="hljs-string">filestream</span>
+  <span class="hljs-attr">id:</span> <span class="hljs-string">nginx-access-id</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">paths:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">/var/log/nginx/access.log</span>
+  <span class="hljs-attr">parsers:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">ndjson:</span>
+        <span class="hljs-attr">keys_under_root:</span> <span class="hljs-literal">true</span>
+        <span class="hljs-attr">overwrite_keys:</span> <span class="hljs-literal">true</span>
+        <span class="hljs-attr">add_error_key:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">fields:</span>
+    <span class="hljs-attr">log_type:</span> <span class="hljs-string">"access"</span>
+  <span class="hljs-attr">fields_under_root:</span> <span class="hljs-literal">false</span>
+
+<span class="hljs-comment"># 旧log格式</span>
+<span class="hljs-comment"># https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-input-filestream.html</span>
+<span class="hljs-comment"># inputs.log deprecated in 7.16.0 (但是仍然可生效)</span>
+<span class="hljs-comment">#filebeat.inputs:</span>
+<span class="hljs-comment">#- type: log</span>
+<span class="hljs-comment">#  #id: nginx-access-id</span>
+<span class="hljs-comment">#  enabled: true</span>
+<span class="hljs-comment">#  paths:</span>
+<span class="hljs-comment">#    - /var/log/nginx/access.log</span>
+<span class="hljs-comment">#  json.keys_under_root: true</span>
+<span class="hljs-comment">#  json.overwrite_keys: true</span>
+<span class="hljs-comment">#  fields:</span>
+<span class="hljs-comment">#    log_type: "access"</span>
+
+<span class="hljs-bullet">-</span> <span class="hljs-attr">type:</span> <span class="hljs-string">filestream</span>
+  <span class="hljs-attr">id:</span> <span class="hljs-string">nginx-error-id</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">paths:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">/var/log/nginx/error.log</span>
+  <span class="hljs-attr">fields:</span>
+    <span class="hljs-attr">log_type:</span> <span class="hljs-string">"error"</span>
+
+<span class="hljs-attr">output.redis:</span>
+  <span class="hljs-attr">hosts:</span> [<span class="hljs-string">"192.168.100.108:6379"</span>]
+  <span class="hljs-attr">password:</span> <span class="hljs-string">"alfiecheung"</span>
+  <span class="hljs-attr">db:</span> <span class="hljs-number">0</span>
+  <span class="hljs-attr">timeout:</span> <span class="hljs-number">5</span>
+  <span class="hljs-attr">key:</span> <span class="hljs-string">"nginx-log"</span>
+  <span class="hljs-attr">keys:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">key:</span> <span class="hljs-string">"filebeat_nginx_access"</span>
+      <span class="hljs-attr">when.equals:</span>
+        <span class="hljs-attr">fields.log_type:</span> <span class="hljs-string">"access"</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">key:</span> <span class="hljs-string">"filebeat_nginx_error"</span>
+      <span class="hljs-attr">when.equals:</span>
+        <span class="hljs-attr">fields.log_type:</span> <span class="hljs-string">"error"</span></code></pre></div>
+<h3 id="syslog">syslog</h3>
+<div><pre class="hljs"><code>wget https://mirrors.tuna.tsinghua.edu.cn/elasticstack/8.x/apt/pool/main/f/filebeat/filebeat-8.13.4-amd64.deb
+dpkg -i filebeat-8.13.4-amd64.deb</code></pre></div>
+<div><pre class="hljs"><code><span class="hljs-attr">filebeat.inputs:</span>
+<span class="hljs-bullet">-</span> <span class="hljs-attr">type:</span> <span class="hljs-string">log</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">paths:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">/var/log/syslog</span>
+  <span class="hljs-attr">tags:</span> [<span class="hljs-string">"syslog"</span>]
+
+<span class="hljs-attr">output.redis:</span>
+  <span class="hljs-attr">hosts:</span> [<span class="hljs-string">"192.168.100.108:6379"</span>]
+  <span class="hljs-attr">key:</span> <span class="hljs-string">"syslog-log"</span>
+  <span class="hljs-attr">password:</span> <span class="hljs-string">"alfiecheung"</span>
+  <span class="hljs-attr">db:</span> <span class="hljs-number">0</span>
+  <span class="hljs-attr">timeout:</span> <span class="hljs-number">5</span></code></pre></div>
+<h3 id="检查启动">检查启动</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 配置检查</span>
+filebeat <span class="hljs-built_in">test</span> config -c /etc/filebeat/filebeat.yml
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl start filebeat.service</code></pre></div>
+<h2 id="logstash-安装配置">Logstash 安装配置</h2>
+<h3 id="安装">安装</h3>
+<div><pre class="hljs"><code>wget https://mirrors.tuna.tsinghua.edu.cn/elasticstack/8.x/yum/8.13.4/logstash-8.13.4-x86_64.rpm
+
+rpm -ivh logstash-8.13.4-x86_64.rpm</code></pre></div>
+<h3 id="配置-2">配置</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># /etc/logstash/logstash.yml</span>
+path.<span class="hljs-symbol">data:</span> /var/lib/logstash
+path.<span class="hljs-symbol">logs:</span> /var/log/logstash
+
+<span class="hljs-comment"># /etc/logstash/conf.d/syslog.yml</span>
+input {
+  redis {
+    host =&gt; <span class="hljs-string">"192.168.100.108"</span>
+    port =&gt; <span class="hljs-number">6379</span>
+    db =&gt; <span class="hljs-number">0</span>
+    password =&gt; <span class="hljs-string">"alfiecheung"</span>
+    key =&gt; <span class="hljs-string">"syslog-log"</span>
+    data_type =&gt; <span class="hljs-string">"list"</span>
+  }
+}
+
+filter {
+  grok {
+    match =&gt; { <span class="hljs-string">"message"</span> =&gt; <span class="hljs-string">"%{SYSLOGTIMESTAMP:syslog_timestamp} %{GREEDYDATA:syslog_message}"</span> }
+  }
+
+  date {
+    match =&gt; [ <span class="hljs-string">"syslog_timestamp"</span>, <span class="hljs-string">"MMM  d HH:mm:ss"</span>, <span class="hljs-string">"MMM dd HH:mm:ss"</span> ]
+    timezone =&gt; <span class="hljs-string">"UTC"</span>
+    target =&gt; <span class="hljs-string">"@timestamp"</span>
+  }
+
+  mutate {
+    add_field =&gt; { <span class="hljs-string">"utc_plus_8"</span> =&gt; <span class="hljs-string">"%{@timestamp}"</span> }
+  }
+
+  date {
+    match =&gt; [ <span class="hljs-string">"utc_plus_8"</span>, <span class="hljs-string">"ISO8601"</span> ]
+    timezone =&gt; <span class="hljs-string">"Asia/Shanghai"</span>
+    target =&gt; <span class="hljs-string">"utc_plus_8"</span>
+  }
+}
+ 
+output {
+  elasticsearch {
+    hosts =&gt; [<span class="hljs-string">"192.168.100.104:9200"</span>,<span class="hljs-string">"192.168.100.105:9200"</span>,<span class="hljs-string">"192.168.100.106:9200"</span>]
+    index =&gt; <span class="hljs-string">"syslog-%{+YYYY.MM.dd}"</span>
+  }
+  stdout {
+    codec =&gt; rubydebug
+  }
+}
+
+<span class="hljs-comment"># /etc/logstash/conf.d/nginx.yml</span>
+input {
+  redis {
+    host =&gt; <span class="hljs-string">"192.168.100.108"</span>
+    port =&gt; <span class="hljs-number">6379</span>
+    password =&gt; <span class="hljs-string">"alfiecheung"</span>
+    db =&gt; <span class="hljs-number">0</span>
+    key =&gt; <span class="hljs-string">"filebeat_nginx_access"</span>
+    data_type =&gt; <span class="hljs-string">"list"</span>
+    add_field =&gt; { <span class="hljs-string">"log_type"</span> =&gt; <span class="hljs-string">"nginx-access"</span> }
+  }
+  redis {
+    host =&gt; <span class="hljs-string">"192.168.100.108"</span>
+    port =&gt; <span class="hljs-number">6379</span>
+    password =&gt; <span class="hljs-string">"alfiecheung"</span>
+    db =&gt; <span class="hljs-number">0</span>
+    key =&gt; <span class="hljs-string">"filebeat_nginx_error"</span>
+    data_type =&gt; <span class="hljs-string">"list"</span>
+    add_field =&gt; { <span class="hljs-string">"log_type"</span> =&gt; <span class="hljs-string">"nginx-error"</span> }
+  }
+}
+
+output {
+  <span class="hljs-keyword">if</span> [log_type] == <span class="hljs-string">"nginx-access"</span> {
+    elasticsearch {
+      hosts =&gt; [<span class="hljs-string">"192.168.100.104:9200"</span>, <span class="hljs-string">"192.168.100.105:9200"</span>, <span class="hljs-string">"192.168.100.106:9200"</span>]
+      index =&gt; <span class="hljs-string">"web-access-logs%{+YYYY.MM.dd}"</span>
+      template_overwrite =&gt; <span class="hljs-literal">true</span>
+      <span class="hljs-comment"># 新增</span>
+      manage_template =&gt; <span class="hljs-literal">false</span>
+      ilm_enabled =&gt; <span class="hljs-literal">false</span>
+      <span class="hljs-comment"># 新增</span>
+    }
+  } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> [log_type] == <span class="hljs-string">"nginx-error"</span> {
+    elasticsearch {
+      hosts =&gt; [<span class="hljs-string">"192.168.100.104:9200"</span>, <span class="hljs-string">"192.168.100.105:9200"</span>, <span class="hljs-string">"192.168.100.106:9200"</span>]
+      index =&gt; <span class="hljs-string">"web-error-logs%{+YYYY.MM.dd}"</span>
+      template_overwrite =&gt; <span class="hljs-literal">true</span>
+      <span class="hljs-comment"># 新增</span>
+      manage_template =&gt; <span class="hljs-literal">false</span>
+      ilm_enabled =&gt; <span class="hljs-literal">false</span>
+      <span class="hljs-comment"># 新增</span>
+    }
+  }
+}</code></pre></div>
+<p>!!! info 配置检查</p>
+<div><pre class="hljs"><code>/usr/share/logstash/bin/logstash -f /etc/logstash/conf.d/my-logstash.conf -t</code></pre></div>
+<p>!!!</p>
+<h2 id="验证查看">验证查看</h2>
+<h3 id="检查redis已有数据进入">检查redis已有数据进入</h3>
+<p><img src="/_resources/05c60d201cb84930a77923e900f99e55.png" /></p>
+<h3 id="查看elasticesearch集群">查看elasticesearch集群</h3>
+<blockquote>
+<p>shards<br />
+<img src="/_resources/7892dca219ae4bf58d8edfe541705203.png" /><br />
+<img src="/_resources/fc73643f56b94406b3cd1b24641a78f2.png" /></p>
+</blockquote>
+<blockquote>
+<p>index<br />
+<img src="/_resources/ccfb0c7ddcad48c0bfc9081f792944fe.png" /><br />
+<img src="/_resources/2518c13d1ab74623a016e9efe7cb0918.png" /></p>
+</blockquote>
+<h3 id="创建试图">创建试图</h3>
+<blockquote>
+<p>syslog<br />
+<img src="/_resources/4e273e1b06434dce815ad25b36f93034.png" /></p>
+</blockquote>
+<blockquote>
+<p>web-access<br />
+<img src="/_resources/2577c05bd7a949c4976d2f96f9aa0345.png" /></p>
+</blockquote>
+<blockquote>
+<p>web-error<br />
+<img src="/_resources/269fde66f5af4e3687c175cdf060644b.png" /></p>
+</blockquote>
+<h3 id="过滤日志">过滤日志</h3>
+<ul>
+<li>
+<p>syslog<br />
+<img src="/_resources/aec3c593b9fd4767a691de0d565e1f9d.png" /></p>
+</li>
+<li>
+<p>web-access<br />
+<img src="/_resources/d6dcca8bdf9d4a919020c7847f99e5b8.png" /></p>
+</li>
+<li>
+<p>web-error<br />
+<img src="/_resources/f4a0453da2ac42f990344f9259194c8d.png" /></p>
+</li>
+</ul>
+<h2 id="问题">问题</h2>
+<h3 id="filebeat-nginx日志被投递到默认的key未投送到指定key中">filebeat nginx日志被投递到默认的key未投送到指定key中</h3>
+<ul>
+<li>错误配置</li>
+</ul>
+<div><pre class="hljs"><code>filebeat.inputs<span class="hljs-punctuation">:</span>
+  - type<span class="hljs-punctuation">:</span> filestream
+  id<span class="hljs-punctuation">:</span> nginx-access-id
+  enabled<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+  paths<span class="hljs-punctuation">:</span>
+    - /var/log/nginx/access.log
+  parsers<span class="hljs-punctuation">:</span>
+    - ndjson<span class="hljs-punctuation">:</span>
+        keys_under_root<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+        overwrite_keys<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+        add_error_key<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+  fields<span class="hljs-punctuation">:</span>
+    log_type<span class="hljs-punctuation">:</span> <span class="hljs-string">"access"</span>
+  fields_under_root<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+
+- type<span class="hljs-punctuation">:</span> log
+  id<span class="hljs-punctuation">:</span> nginx-error-id
+  enabled<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+  paths<span class="hljs-punctuation">:</span>
+    - /var/log/nginx/error.log
+  fields<span class="hljs-punctuation">:</span>
+    log_type<span class="hljs-punctuation">:</span> <span class="hljs-string">"error"</span>
+  fields_under_root<span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span>
+
+output.redis<span class="hljs-punctuation">:</span>
+  hosts<span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">"127.0.0.1:6379"</span><span class="hljs-punctuation">]</span>
+  password<span class="hljs-punctuation">:</span> <span class="hljs-string">"alfiecheung"</span>
+  db<span class="hljs-punctuation">:</span> <span class="hljs-number">0</span>
+  timeout<span class="hljs-punctuation">:</span> <span class="hljs-number">5</span>
+  key<span class="hljs-punctuation">:</span> <span class="hljs-string">"nginx-log"</span>
+  keys<span class="hljs-punctuation">:</span>
+    - key<span class="hljs-punctuation">:</span> <span class="hljs-string">"filebeat_nginx_access"</span>
+      when.equals<span class="hljs-punctuation">:</span>
+        fields.log_type<span class="hljs-punctuation">:</span> <span class="hljs-string">"access"</span>
+    - key<span class="hljs-punctuation">:</span> <span class="hljs-string">"filebeat_nginx_error"</span>
+      when.equals<span class="hljs-punctuation">:</span>
+        fields.log_type<span class="hljs-punctuation">:</span> <span class="hljs-string">"error"</span></code></pre></div>
+<ul>
+<li>
+<p>原因</p>
+<ul>
+<li>fields_under_root: true 配置会将 <code>field</code>字段置换到顶级</li>
+<li>设置为 <code>true</code>
+<ul>
+<li><img src="/_resources/6ef156cb738f481fb3c5b3cc9ada2427.png" /></li>
+</ul>
+</li>
+<li>设置为 <code>false</code>
+<ul>
+<li><img src="/_resources/1542eaec316542f2b5a61acc2d2ef650.png" /></li>
+</ul>
+</li>
+<li><code>output</code> 字段使用了 <code>filed.log_type</code> 进行判断投递，因此出了乌龙</li>
+</ul>
+</li>
+<li>
+<p>解决方式</p>
+<ul>
+<li>修改<code>fields_under_root: false</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="index-创建成功但没有数据">index 创建成功但没有数据</h3>
+<p><img src="/_resources/58a281208d3941e28788041d51c8ba55.png" /><br />
+<img src="/_resources/3ade574382e74dec9d16cd76a1cee921.png" /></p>
+<ul>
+<li>
+<p>原因</p>
+<ul>
+<li>此前实验过程在<code>filebeat</code>进行了如下配置，这导致了对创建 <code>nginx</code>开头的index都使用这个自定义<code>index</code>模板，而这里创建的是一个<code>filebeat</code>的<code>datastream</code>模板，使用需要采用 <code>data_stream</code> 关键字</li>
+</ul>
+<div><pre class="hljs"><code><span class="hljs-string">...</span>
+<span class="hljs-attr">setup.ilm.enabled:</span> <span class="hljs-literal">false</span>
+<span class="hljs-attr">setup.template.name:</span> <span class="hljs-string">"nginx"</span>
+<span class="hljs-attr">setup.template.pattern:</span> <span class="hljs-string">"nginx-*"</span></code></pre></div>
+<ul>
+<li>由于 index 设置为 nginx-access-logs%{+YYYY.MM.dd}，写入的数据会匹配 Filebeat 配置中 setup.template.pattern: "nginx-*" 的模式，所以会应用 Filebeat 配置的 nginx 索引模板。</li>
+</ul>
+</li>
+<li>
+<p>解决方式</p>
+<ul>
+<li>采用<code>不同的 indeix 名称</code></li>
+</ul>
+</li>
+</ul>
+]]></content:encoded>
+        </item>
         <item>
             <title><![CDATA[第六周作业]]></title>
             <guid>74ca6fa230ca4e5fbc649b002abdf83b</guid>
