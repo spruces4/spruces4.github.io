@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<link rel="stylesheet" href="/_assets/main.css" />
+
+    <title>第八周作业 - Alfie Cheung</title>
+  <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /></head>
+  <body>
+    <div class="main">
+      <nav class="navigation">
+        <a href="/">Alfie Cheung</a>
+      </nav>
+      <article>
+        <header>
+          <h1 class="article-title">第八周作业</h1>
+          <div class="article-info">
+            <div>
+              <span
+                >Created At：<time datetime="1718029634980"
+                  >2024-06-10 22:27</time
+                ></span
+              >
+              <span
+                >Updated At：<time datetime="1718029817322"
+                  >2024-06-10 22:30</time
+                ></span
+              >
+            </div>
+            
+          </div>
+        </header>
+        <div class="article-content markdown-body"><nav class="table-of-contents"><ul><li><a href="#部署">部署</a><ul><li><a href="#架构信息">架构信息</a></li><li><a href="#标识信息更新">标识信息更新</a></li><li><a href="#使用国内源">使用国内源</a></li><li><a href="#时间同步">时间同步</a></li><li><a href="#关闭swap">关闭swap</a></li><li><a href="#关闭防火墙">关闭防火墙</a></li><li><a href="#内核优化">内核优化</a></li><li><a href="#必备软件">必备软件</a></li><li><a href="#运行时选择">运行时选择</a><ul><li><a href="#docker-cri-dockered">docker + cri-dockered</a><ul><li><a href="#docker">docker</a></li><li><a href="#cir-dockered">cir-dockered</a></li><li><a href="#整合运行时">整合运行时</a></li></ul></li><li><a href="#containerd">Containerd</a></li></ul></li><li><a href="#kube安装">kube*安装</a></li><li><a href="#master初始化">Master初始化</a><ul><li><a href="#镜像获得">镜像获得</a></li><li><a href="#初始化选择">初始化选择</a><ul><li><a href="#命令行初始化">命令行初始化</a></li><li><a href="#文件初始化">文件初始化</a></li></ul></li><li><a href="#凭据复制">凭据复制</a></li></ul></li><li><a href="#网络插件部署">网络插件部署</a></li><li><a href="#增添master">增添Master</a></li><li><a href="#worker加入">Worker加入</a></li><li><a href="#验证">验证</a></li></ul></li><li><a href="#升级">升级</a></li><li><a href="#重置">重置</a></li><li><a href="#证书管理">证书管理</a><ul><li><a href="#证书检查">证书检查</a></li><li><a href="#更新证书">更新证书</a></li></ul></li><li><a href="#kube-proxy-工作模式切换">kube-proxy 工作模式切换</a></li><li><a href="#问题处理">问题处理</a><ul><li><a href="#found-multiple-cri-endpoints-on-the-host">Found multiple CRI endpoints on the host</a></li><li><a href="#指定kubeadm拉取镜像的版本">指定kubeadm拉取镜像的版本</a></li></ul></li></ul></nav><h1 id="部署">部署</h1>
+<h2 id="架构信息">架构信息</h2>
+<table>
+<thead>
+<tr>
+<th>网络类型</th>
+<th>网段信息</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节点网络</td>
+<td>192.168.100.0/24</td>
+</tr>
+<tr>
+<td>service网络</td>
+<td>10.96.0.0/12</td>
+</tr>
+<tr>
+<td>pod网络</td>
+<td>10.244.0.0/16</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>版本</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kubeadm</td>
+<td>1.29.2</td>
+<td>Kubernetes集群管理</td>
+</tr>
+<tr>
+<td>docker</td>
+<td>25.0.3</td>
+<td>容器化平台</td>
+</tr>
+<tr>
+<td>cri-dockerd</td>
+<td>0.3.10</td>
+<td>容器运行时接口</td>
+</tr>
+<tr>
+<td>kubernetes</td>
+<td>1.29.2</td>
+<td>容器编排系统</td>
+</tr>
+<tr>
+<td>flannel</td>
+<td>v0.25.3</td>
+<td>网络插件</td>
+</tr>
+<tr>
+<td>flannel-cni-plugin</td>
+<td>v1.4.1-flannel1</td>
+<td>CNI网络插件</td>
+</tr>
+<tr>
+<td>ipvs</td>
+<td>1.31</td>
+<td>流量路由与服务代理</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>节点</th>
+<th>操作系统</th>
+<th>主机名</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>192.168.100.110/24</td>
+<td>Ubuntu 22.04 LTS</td>
+<td>k8s-master01.alfie.com <br class="jop-noMdConv" />kubeapi.alfie.com</td>
+<td>Master</td>
+</tr>
+<tr>
+<td>192.168.100.121/24</td>
+<td>Ubuntu 22.04 LTS</td>
+<td>k8s-node01.alfie.com</td>
+<td>Worker</td>
+</tr>
+<tr>
+<td>192.168.100.122/24</td>
+<td>Ubuntu 22.04 LTS</td>
+<td>k8s-node02.alfie.com</td>
+<td>Worker</td>
+</tr>
+<tr>
+<td>192.168.100.123/24</td>
+<td>Ubuntu 22.04 LTS</td>
+<td>k8s-node03.alfie.com</td>
+<td>Worker</td>
+</tr>
+</tbody>
+</table>
+<h2 id="标识信息更新">标识信息更新</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 确认唯一UUID</span>
+cat /sys/class/dmi/id/product_uuid
+
+<span class="hljs-comment"># 初始化变量定义</span>
+api=k8s-api.alfie.com
+m1=k8s-master01.alfie.com
+w1=k8s-node01.alfie.com
+w2=k8s-node02.alfie.com
+w3=k8s-node03.alfie.com
+
+m1_ip=192.168.100.110
+w1_ip=192.168.100.121
+w2_ip=192.168.100.122
+w3_ip=192.168.100.123
+
+<span class="hljs-comment"># hostname 修改</span>
+hostnamectl set-hostname <span class="hljs-variable">${hn}</span>
+
+<span class="hljs-comment"># hosts记录更新</span>
+cat &gt; /etc/hosts &lt;&lt;<span class="hljs-string">EOF
+${m1_ip} ${api}
+${m1_ip} ${m1}
+${w1_ip} ${w1}
+${w2_ip} ${w2}
+${w3_ip} ${w3}
+EOF</span>
+
+<span class="hljs-comment"># 按主机修改ip</span>
+ip=<span class="hljs-variable">${xxx}</span>
+hn=<span class="hljs-variable">${yyy}</span>
+
+<span class="hljs-comment"># Ubuntu系列修改IP</span>
+sed -i.bak <span class="hljs-string">"6c\        - <span class="hljs-variable">${ip}</span>/24"</span> \
+/etc/netplan/00-installer-config.yaml
+netplan apply</code></pre></div>
+<h2 id="使用国内源">使用国内源</h2>
+<div><pre class="hljs"><code>bash -c <span class="hljs-string">"cat &lt; EOF &gt; /etc/apt/sources.list &amp;&amp; apt update
+deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-proposed main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-proposed main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+EOF"</span></code></pre></div>
+<h2 id="时间同步">时间同步</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 修改时区为中国时间</span>
+timedatectl set-timezone Asia/Shanghai
+
+<span class="hljs-comment"># 关闭此前的默认时间同步工具</span>
+systemctl unmask systemd-timesyncd.service
+systemctl <span class="hljs-built_in">disable</span> --now systemd-timesyncd.service
+
+apt -y install chrony
+mv /etc/chrony/chrony.conf /etc/chrony/chrony.conf.bak
+
+cat &gt; /etc/chrony/chrony.conf &lt;&lt; <span class="hljs-string">EOF
+server ntp1.aliyun.com iburst minpoll 4 maxpoll 10
+server ntp2.aliyun.com iburst minpoll 4 maxpoll 10
+server ntp3.aliyun.com iburst minpoll 4 maxpoll 10
+server ntp4.aliyun.com iburst minpoll 4 maxpoll 10
+server ntp5.aliyun.com iburst minpoll 4 maxpoll 10
+server ntp6.aliyun.com iburst minpoll 4 maxpoll 10
+server ntp7.aliyun.com iburst minpoll 4 maxpoll 10
+driftfile /var/lib/chrony/drift
+makestep 10 3
+rtcsync
+allow 0.0.0.0/0
+local stratum 10
+#keyfile /etc/chrony.keys
+logdir /var/log/chrony
+stratumweight 0.05
+noclientlog
+logchange 0.5
+EOF</span>
+
+<span class="hljs-comment"># 开启当前时间同步chrony</span>
+systemctl daemon-reload
+systemctl <span class="hljs-built_in">enable</span> --now chrony.service</code></pre></div>
+<h2 id="关闭swap">关闭swap</h2>
+<div><pre class="hljs"><code>sed -ri.bak <span class="hljs-string">'s/.*swap.*/#&amp;/'</span> /etc/fstab
+swappoff -a
+<span class="hljs-comment">#sed -n '/swap/ s/\(.*\)/# \1/gp' /etc/fstab</span>
+systemctl <span class="hljs-built_in">disable</span> --now swap.target 
+
+<span class="hljs-comment"># 检查是否关闭</span>
+swapon --show</code></pre></div>
+<h2 id="关闭防火墙">关闭防火墙</h2>
+<p><img src="/_resources/38254f3326b24404a354eb712ebf65ab.png" /><br />
+<a title="https://kubernetes.io/docs/reference/networking/ports-and-protocols/" href="https://kubernetes.io/docs/reference/networking/ports-and-protocols/">ref</a></p>
+<div><pre class="hljs"><code>ufw <span class="hljs-built_in">disable</span>
+ufw status</code></pre></div>
+<h2 id="内核优化">内核优化</h2>
+<div><pre class="hljs"><code>cat &gt; /etc/sysctl.d/k8s.conf &lt;&lt;<span class="hljs-string">EOF
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+vm.overcommit_memory=1
+vm.panic_on_oom=0
+fs.inotify.max_user_watches=89100
+fs.file-max=52706963
+fs.nr_open=52706963
+net.netfilter.nf_conntrack_max=2310720
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_probes = 3
+net.ipv4.tcp_keepalive_intvl =15
+net.ipv4.tcp_max_tw_buckets = 36000
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_max_orphans = 327680
+net.ipv4.tcp_orphan_retries = 3
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 16384
+net.ipv4.ip_conntrack_max = 65536
+net.ipv4.tcp_max_syn_backlog = 16384
+net.core.somaxconn = 16384
+EOF</span>
+
+<span class="hljs-comment"># 重新加载配置</span>
+sysctl --system
+
+<span class="hljs-comment"># 文件资源限制</span>
+sudo sh -c <span class="hljs-string">'cat &gt;&gt; /etc/security/limits.d/k8s.conf &lt;&lt;EOF
+* soft nofile 65535
+* hard nofile 131070
+EOF'</span>
+
+<span class="hljs-built_in">ulimit</span> -Sn 
+<span class="hljs-built_in">ulimit</span> -Hn</code></pre></div>
+<h2 id="必备软件">必备软件</h2>
+<div><pre class="hljs"><code>apt -y install tree nmap sysstat \
+lrzsz dos2unix telnet vim lsof net-tools \
+rsync wget jq psmisc ipvsadm \
+lvm2 git curl tar bash-completion expect \
+apt-transport-https ca-certificates curl ipset iputils-ping</code></pre></div>
+<h2 id="运行时选择">运行时选择</h2>
+<h3 id="docker-cri-dockered">docker + cri-dockered</h3>
+<h4 id="docker">docker</h4>
+<div><pre class="hljs"><code><span class="hljs-comment"># 安装docker</span>
+<span class="hljs-comment">#0. 卸载此前的docker</span>
+sudo apt purge docker-ce \
+docker-ce-cli  \
+docker-buildx-plugin \
+docker-ce-rootless-extras \
+docker-compose-plugin \
+containerd.io \
+docker-scan-plugin &amp;&amp; sudo rm -rf /var/lib/docker &amp;&amp; sudo apt autoremove
+
+<span class="hljs-comment">#1. 安装必备工具</span>
+sudo apt-get -y install apt-transport-https ca-certificates curl software-properties-common
+
+<span class="hljs-comment">#2. 安装GPG证书</span>
+curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo apt-key add -
+
+<span class="hljs-comment">#3. 写入仓库</span>
+sudo add-apt-repository <span class="hljs-string">"deb [arch=amd64] https://mirrors.aliyun.com/docker-ce/linux/ubuntu <span class="hljs-subst">$(lsb_release -cs)</span> stable"</span>
+
+<span class="hljs-comment">#4. 查询版本</span>
+apt-cache madison docker-ce
+&gt;  docker-ce | 5:25.0.3-1~ubuntu.22.04~jammy | https://mirrors.aliyun.com/docker-ce/linux/ubuntu jammy/stable amd64 Packages
+
+<span class="hljs-comment">#5. 安装指定docker-ce (指定版本不能只指定docker-ce，否则其他都会使用最新版本造成不是适配)</span>
+v=<span class="hljs-string">'5:25.0.3-1~ubuntu.22.04~jammy'</span>
+sudo apt-get install docker-ce=<span class="hljs-variable">$v</span> \
+docker-ce-cli=<span class="hljs-variable">$v</span> \
+docker-ce-rootless-extras=<span class="hljs-variable">$v</span> 
+
+<span class="hljs-comment">#6. 配置镜像加速</span>
+cat &gt; /etc/docker/daemon.json &lt;&lt;<span class="hljs-string">EOF
+{
+  "registry-mirrors": [
+    "https://registry.cn-hangzhou.aliyuncs.com"
+  ],
+  "exec-opts": [
+    "native.cgroupdriver=systemd"
+  ],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "200m"
+  },
+  "storage-driver": "overlay2"
+}
+EOF</span>
+
+<span class="hljs-comment">#7. 配置代理</span>
+vim /lib/systemd/system/docker.service
+[Service]
+Environment=<span class="hljs-string">"HTTP_PROXY=http://<span class="hljs-variable">$PROXY_SERVER_IP</span>:<span class="hljs-variable">$PROXY_PORT</span>"</span>
+Environment=<span class="hljs-string">"HTTPS_PROXY=http://<span class="hljs-variable">$PROXY_SERVER_IP</span>:<span class="hljs-variable">$PROXY_PORT</span>"</span>
+Environment=<span class="hljs-string">"NO_PROXY=127.0.0.0/8,192.168.100.0/24,10.244.0.0/16,192.168.0.0/16,10.96.0.0/12,alfie.com,cluster.local"</span>
+
+<span class="hljs-comment">#8. 配置加载</span>
+systemctl daemon-reload &amp;&amp; systemctl start docker
+
+<span class="hljs-comment">#9. 查看版本</span>
+docker version</code></pre></div>
+<h4 id="cir-dockered">cir-dockered</h4>
+<blockquote>
+<p>Docker Engine默认不支持CRI规范，Kubernetes自v1.24移除了对<code>docker-shim</code>的支持。<br />
+<code>cri-dockerd</code>可以为<code>Docker Engine</code>提供一个能够支持到<code>CRI规范的垫片</code>，从而能够让Kubernetes基于CRI控制Docker。</p>
+</blockquote>
+<blockquote>
+<p>源地址：<a title="https://github.com/Mirantis/cri-dockerd" href="https://github.com/Mirantis/cri-dockerd">https://github.com/Mirantis/cri-dockerd</a></p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 下载安装包</span>
+curl -LO https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.10/cri-dockerd_0.3.10.3-0.ubuntu-jammy_amd64.deb
+
+<span class="hljs-comment"># 安装</span>
+dpkg -i ./cri-dockerd_0.3.10.3-0.ubuntu-jammy_amd64.deb
+<span class="hljs-comment">#apt install ./cri-dockerd_0.3.10.3-0.ubuntu-jammy_amd64.deb</span>
+
+<span class="hljs-comment"># 查看其状态</span>
+systemctl status cri-docker.service</code></pre></div>
+<h4 id="整合运行时">整合运行时</h4>
+<p>!!! warning 警告</p>
+<blockquote>
+<p>仅<code>cri-dockerd</code>模式需执行.<br />
+!!!</p>
+</blockquote>
+<div><pre class="hljs"><code>vim /usr/lib/systemd/system/cri-docker.service
+
+ExecStart=/usr/bin/cri-dockerd --container-runtime-endpoint fd:// --network-plugin=cni --cni-bin-dir=/opt/cni/bin --cni-cache-dir=/var/lib/cni/cache --cni-conf-dir=/etc/cni/net.d --pod-infra-container-image=registry.k8s.io/pause:3.9
+
+    --network-plugin：指定网络插件规范的类型，这里要使用CNI；
+    --cni-bin-dir：指定CNI插件二进制程序文件的搜索目录； 
+    --cni-cache-dir：CNI插件使用的缓存目录； 
+    --cni-conf-dir：CNI插件加载配置文件的目录； 
+    --pod-infra-container-image：Pod中的puase容器要使用的Image，默认为registry.k8s.io上的pause仓库中的镜像；不能直接获取到该Image时，需要明确指定为从指定的位置加载，例如“registry.aliyuncs.com/google_containers/pause:3.9”。
+
+<span class="hljs-comment"># 重启服务</span>
+systemctl daemon-reload &amp;&amp; systemctl restart cri-docker.service</code></pre></div>
+<h3 id="containerd">Containerd</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 导入containerd密钥</span>
+curl -fsSL http://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | apt-key add -
+
+<span class="hljs-comment"># 添加库</span>
+add-apt-repository <span class="hljs-string">"deb [arch=amd64] http://mirrors.aliyun.com/docker-ce/linux/ubuntu <span class="hljs-subst">$(lsb_release -cs)</span> stable"</span>
+
+<span class="hljs-comment"># 更新库</span>
+apt update
+
+<span class="hljs-comment"># 安装</span>
+apt-get  install  containerd.io
+
+<span class="hljs-comment"># 配置</span>
+<span class="hljs-comment">## 生成默认配置</span>
+mkdir /etc/containerd
+containerd config default &gt; /etc/containerd/config.toml
+
+<span class="hljs-comment">## 定制所需配置</span>
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.containerd.runtimes.runc]
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.containerd.runtimes.runc.options]
+  SystemdCgroup = <span class="hljs-literal">true</span>
+
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>]
+sandbox_image = <span class="hljs-string">"registry.aliyuncs.com/google_containers/pause:3.9"</span>
+
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry]
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry.mirrors]
+  [plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry.mirrors.<span class="hljs-string">"docker.io"</span>]
+    endpoint = [<span class="hljs-string">"https://docker.mirrors.ustc.edu.cn"</span>, <span class="hljs-string">"https://registry.docker-cn.com"</span>]
+
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry.mirrors.<span class="hljs-string">"registry.k8s.io"</span>]
+endpoint = [<span class="hljs-string">"https://registry.aliyuncs.com/google_containers"</span>]
+
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry]
+[plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry.mirrors]
+  [plugins.<span class="hljs-string">"io.containerd.grpc.v1.cri"</span>.registry.mirrors.<span class="hljs-string">"registry.magedu.com"</span>]
+    endpoint = [<span class="hljs-string">"https://registry.magedu.com"</span>]
+
+systemctl daemon-reload  &amp;&amp; systemctl restart containerd
+
+vim /etc/crictl.yam
+runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+timeout: 10
+debug: <span class="hljs-literal">true</span></code></pre></div>
+<h2 id="kube安装">kube*安装</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 导入gpg证书</span>
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+<span class="hljs-comment"># 写入源文件</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /'</span> | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+<span class="hljs-comment"># 查看当前支持版本</span>
+apt-cache madison kublet 
+&gt;   kubelet | 1.29.2-1.1 | https://pkgs.k8s.io/core:/stable:/v1.29/deb  Packages
+
+<span class="hljs-comment"># 安装 kublet, kubeadm, kubectl</span>
+v=1.29.2-1.1
+apt-get update
+apt-get install -y kubelet=<span class="hljs-variable">$v</span> kubeadm=<span class="hljs-variable">$v</span> kubectl=<span class="hljs-variable">$v</span>
+apt-mark hold kubelet kubeadm kubectl</code></pre></div>
+<h2 id="master初始化">Master初始化</h2>
+<h3 id="镜像获得">镜像获得</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 只能获得最新大版本下的镜像</span>
+kubeadm config images list
+
+<span class="hljs-comment"># 指定所需的版本镜像</span>
+kubeadm config images list --kubernetes-version v1.29.2
+&gt; registry.k8s.io/kube-apiserver:v1.29.2
+&gt; registry.k8s.io/kube-controller-manager:v1.29.2
+&gt; registry.k8s.io/kube-scheduler:v1.29.2
+&gt; registry.k8s.io/kube-proxy:v1.29.2
+&gt; registry.k8s.io/coredns/coredns:v1.11.1
+&gt; registry.k8s.io/pause:3.9
+&gt; registry.k8s.io/etcd:3.5.10-0
+
+<span class="hljs-comment"># 二选一</span>
+  <span class="hljs-comment"># 查看国内源list</span>
+    kubeadm config images list --image-repository=registry.aliyuncs.com/google_containers --kubernetes-version v1.29.2
+    <span class="hljs-comment">## 通过国内源下载</span>
+    kubeadm config images pull --image-repository=registry.aliyuncs.com/google_containers --kubernetes-version v1.29.2
+    <span class="hljs-comment">## 修改镜像tag</span>
+    docker tag registry.aliyuncs.com/google_containers/kube-apiserver:v1.29.2  registry.k8s.io/kube-apiserver:v1.29.2
+    ...
+
+    <span class="hljs-comment">## 通过国外源下载</span>
+    <span class="hljs-comment">## 使用cri-dockerd 需要添加 --cri-socket</span>
+    kubeadm config images pull --kubernetes-version v1.29.2 --cri-socket=unix:///var/run/cri-dockerd.sock
+    
+    <span class="hljs-comment">## 使用contained则使用如下命令</span>
+    kubeadm config images pull --kubernetes-version v1.29.2</code></pre></div>
+<h3 id="初始化选择">初始化选择</h3>
+<h4 id="命令行初始化">命令行初始化</h4>
+<div><pre class="hljs"><code>kubeadm init \
+      --control-plane-endpoint=<span class="hljs-string">"k8s-master01.alfie.com"</span> \
+      --kubernetes-version=v1.29.2 \
+      --pod-network-cidr=10.244.0.0/16 \
+      --service-cidr=10.96.0.0/12 \
+      --token-ttl=0 \
+      --upload-certs \
+      --cri-socket=unix:///var/run/cri-dockerd.sock</code></pre></div>
+<p>!!!  warning 说明</p>
+<blockquote>
+<p>对于使用 <code>docker + cri-dockered</code>容器运行时，需要添加<code>--cri-socket</code> 配置。<br />
+!!!</p>
+</blockquote>
+<p>!!! tip 参数说明</p>
+<ul>
+<li>
+<p><code>--image-repository</code>：指定要<code>使用的镜像仓库</code>，默认为registry.k8s.io；</p>
+</li>
+<li>
+<p><code>--kubernetes-version</code>：kubernetes程序组件的版本号，它必须要与安装的kubelet程序包的版本号相同；</p>
+</li>
+<li>
+<p><code>--control-plane-endpoint</code>：控制平面的固定访问端点，可以是<code>IP地址</code>或<code>DNS名称</code>，会被用于集群管理员及集群组件的<code>kubeconfig</code>配置文件的<code>API Server</code>的访问地址；<code>单控制平面部署时可以不使用该选项</code>；</p>
+</li>
+<li>
+<p><code>--pod-network-cidr</code>：Pod网络的地址范围，其值为CIDR格式的网络地址。</p>
+<ul>
+<li><code>Flannel</code>网络插件的默认为<code>10.244.0.0/16</code></li>
+<li><code>Project Calico</code>插件的默认值为<code>192.168.0.0/16</code></li>
+<li><code>Cilium</code>的默认值为<code>10.0.0.0/8</code></li>
+</ul>
+</li>
+<li>
+<p><code>--service-cidr</code>：Service的网络地址范围，其值为CIDR格式的网络地址</p>
+<ul>
+<li>kubeadm使用的默认为<code>10.96.0.0/12</code>；通常，仅在<code>使用Flannel一类的网络</code>插件需要手动指定该地址；</li>
+</ul>
+</li>
+<li>
+<p><code>--apiserver-advertise-address</code>：apiserver通告给其他组件的IP地址，一般应该为Master节点的用于集群内部通信的IP地址，<code>0.0.0.0</code>表示节点上所有可用地址；</p>
+</li>
+<li>
+<p><code>--upload-certs</code>：将控制平面证书上传到 kubeadm-certs Secret。</p>
+</li>
+<li>
+<p><code>mode</code></p>
+</li>
+<li>
+<p><code>--token-ttl</code>：共享令牌（token）的过期时长，<code>默认为24小时</code>，<code>0表示永不过期</code>；为防止不安全存储等原因导致的令牌泄露危及集群安全，建议为其设定过期时长。未设定该选项时，在token过期后，若期望再向集群中加入其它节点，可以使用如下命令重新创建token，并生成节点加入命令。<br />
+!!!<br />
+<img src="/_resources/4f45e91d63ce450896872c2fcc800acd.png" /></p>
+</li>
+</ul>
+<h4 id="文件初始化">文件初始化</h4>
+<div><pre class="hljs"><code>kubeadm config <span class="hljs-built_in">print</span> init-defaults</code></pre></div>
+<p>!!! warning 文件初始化</p>
+<blockquote>
+<p>文件初始化最主要是可以实现更多精细化控制，例如此处使用<code>ipvs</code>mode，默认使用<code>iptables</code>。<br />
+!!!</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">kubeadm.k8s.io/v1beta3</span>
+<span class="hljs-attr">bootstrapTokens:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">groups:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-string">system:bootstrappers:kubeadm:default-node-token</span>
+    <span class="hljs-attr">token:</span> <span class="hljs-string">alfie.comc4mu9kzd5q7ur</span>
+    <span class="hljs-attr">ttl:</span> <span class="hljs-string">24h0m0s</span>
+    <span class="hljs-attr">usages:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-string">signing</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-string">authentication</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">InitConfiguration</span>
+<span class="hljs-attr">localAPIEndpoint:</span>
+  <span class="hljs-comment"># 这里的地址即为初始化的控制平面第一个节点的IP地址；</span>
+  <span class="hljs-attr">advertiseAddress:</span> <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.110</span>
+  <span class="hljs-attr">bindPort:</span> <span class="hljs-number">6443</span>
+<span class="hljs-attr">nodeRegistration:</span>
+  <span class="hljs-comment"># 注意，使用docker-ce和cri-dockerd时，要启用如下配置的cri socket文件的路径；</span>
+  <span class="hljs-attr">criSocket:</span> <span class="hljs-string">unix:///run/cri-dockerd.sock</span>
+  <span class="hljs-attr">imagePullPolicy:</span> <span class="hljs-string">IfNotPresent</span>
+  <span class="hljs-comment"># 第一个控制平面节点的主机名称；</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">k8s-master01.magedu.com</span>
+  <span class="hljs-attr">taints:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">effect:</span> <span class="hljs-string">NoSchedule</span>
+      <span class="hljs-attr">key:</span> <span class="hljs-string">node-role.kubernetes.io/master</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">effect:</span> <span class="hljs-string">NoSchedule</span>
+      <span class="hljs-attr">key:</span> <span class="hljs-string">node-role.kubernetes.io/control-plane</span>
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">apiServer:</span>
+  <span class="hljs-attr">timeoutForControlPlane:</span> <span class="hljs-string">4m0s</span>
+  <span class="hljs-comment"># 将下面配置中的certSANS列表中的值，修改为客户端接入API Server时可能会使用的各类目标地址；</span>
+  <span class="hljs-attr">certSANs:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">kubeapi.alfie.com</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.110</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">kubeadm.k8s.io/v1beta3</span>
+<span class="hljs-comment"># 控制平面的接入端点，我们这里选择适配到kubeapi.alfie.com这一域名上；</span>
+<span class="hljs-attr">controlPlaneEndpoint:</span> <span class="hljs-string">"kubeapi.alfie.com:6443"</span>
+<span class="hljs-attr">certificatesDir:</span> <span class="hljs-string">/etc/kubernetes/pki</span>
+<span class="hljs-attr">clusterName:</span> <span class="hljs-string">kubernetes</span>
+<span class="hljs-attr">controllerManager:</span> {}
+<span class="hljs-attr">dns:</span> {}
+<span class="hljs-attr">etcd:</span>
+  <span class="hljs-attr">local:</span>
+    <span class="hljs-attr">dataDir:</span> <span class="hljs-string">/var/lib/etcd</span>
+<span class="hljs-attr">imageRepository:</span> <span class="hljs-string">registry.aliyuncs.com/google_containers</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">ClusterConfiguration</span>
+<span class="hljs-attr">kubernetesVersion:</span> <span class="hljs-string">v1.29.2</span>
+<span class="hljs-attr">networking:</span>
+  <span class="hljs-comment"># 集群要使用的域名，默认为cluster.local</span>
+  <span class="hljs-attr">dnsDomain:</span> <span class="hljs-string">cluster.local</span>
+  <span class="hljs-comment"># service网络的地址</span>
+  <span class="hljs-attr">serviceSubnet:</span> <span class="hljs-number">10.96</span><span class="hljs-number">.0</span><span class="hljs-number">.0</span><span class="hljs-string">/12</span>
+  <span class="hljs-comment"># pod网络的地址，flannel网络插件默认使用10.244.0.0/16</span>
+  <span class="hljs-attr">podSubnet:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.0</span><span class="hljs-number">.0</span><span class="hljs-string">/16</span>
+<span class="hljs-attr">scheduler:</span> {}
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">kubeproxy.config.k8s.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">KubeProxyConfiguration</span>
+<span class="hljs-comment"># 用于配置kube-proxy上为Service指定的代理模式，默认为iptables；</span>
+<span class="hljs-attr">mode:</span> <span class="hljs-string">"ipvs"</span></code></pre></div>
+<h3 id="凭据复制">凭据复制</h3>
+<div><pre class="hljs"><code>mkdir -p <span class="hljs-variable">$HOME</span>/.kube
+sudo cp -i /etc/kubernetes/admin.conf <span class="hljs-variable">$HOME</span>/.kube/config
+sudo chown $(id -u):$(id -g) <span class="hljs-variable">$HOME</span>/.kube/config</code></pre></div>
+<h2 id="网络插件部署">网络插件部署</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 部署flannel</span>
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+
+<span class="hljs-comment"># 验证cri容器安装</span>
+kubectl get pods -n kube-flannel</code></pre></div>
+<p><img src="/_resources/924781e0673548c9a8a4a6ac1797a32e.png" /></p>
+<h2 id="增添master">增添Master</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 使用`docker+cri-dockered`作为运行时，需要使用 `--cri-socket`指定运行时</span>
+  kubeadm join k8s-master01.alfie.com:6443 --token n2fewy.h1fwv3svdrf9l6w8 \
+    --discovery-token-ca-cert-hash sha256:d0b3fb23632bb02fddad5789e1cb09c34161a152421bf23e3263bce54800392f \
+    --control-plane --certificate-key 927190558e3213e44841da9aa5de38391882db7a47bc83244df49a0f6f904d0b
+    --cri-socket=unix:///var/run/cri-dockerd.sock</code></pre></div>
+<h2 id="worker加入">Worker加入</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 使用`docker+cri-dockered`作为运行时，需要使用 `--cri-socket`指定运行时</span>
+kubeadm join k8s-master01.alfie.com:6443 --token n2fewy.h1fwv3svdrf9l6w8 \
+    --discovery-token-ca-cert-hash sha256:d0b3fb23632bb02fddad5789e1cb09c34161a152421bf23e3263bce54800392f \
+    --cri-socket=unix:///var/run/cri-dockerd.sock</code></pre></div>
+<p><img src="/_resources/c9bea3755f3d4e0c810f71402eb13861.png" /></p>
+<p>!!! warning 说明</p>
+<blockquote>
+<p>对于使用 <code>docker + cri-dockered</code>容器运行时，需要添加<code>--cri-socket</code> 配置。<br />
+!!!</p>
+</blockquote>
+<h2 id="验证">验证</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 查看集群节点</span>
+kubectl get nodes</code></pre></div>
+<p><img src="/_resources/ebb8d8d182514b0fa5f478653675f0b1.png" /></p>
+<h1 id="升级">升级</h1>
+<p>!!! success 步骤</p>
+<ol>
+<li>先升级<code>控制平面</code>节点</li>
+<li>后再<code>升级</code>工作节点</li>
+</ol>
+<blockquote>
+<p>排空节点，而后升级kubelet和kubectl<br />
+<a title="https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/" href="https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/">official doc</a><br />
+!!!</p>
+</blockquote>
+<h1 id="重置">重置</h1>
+<blockquote>
+<p>kubeadm reset</p>
+</blockquote>
+<blockquote>
+<p>尽最大努力还原通过 <code>kubeadm init</code> 或者 <code>kubeadm join</code> 命令对主机所作的更改, 一般需要配置<code>--cri-socket</code>选项使用。</p>
+</blockquote>
+<blockquote>
+<p>该操作往往在需要重置整个集群时使用，同时需要删除相关文件、清理<code>iptables/ipvs</code>规则。</p>
+</blockquote>
+<h1 id="证书管理">证书管理</h1>
+<blockquote>
+<p>kubeadm为各节点默认生成的SSL证书的<code>有效期限为1年</code>，在到期之前需要renew这些证书</p>
+</blockquote>
+<h2 id="证书检查">证书检查</h2>
+<blockquote>
+<p>kubeadm certs check-expiration<br />
+<img src="/_resources/d71182c217e34662839eb1ed426d216e.png" /></p>
+</blockquote>
+<h2 id="更新证书">更新证书</h2>
+<blockquote>
+<p>kubeadm certs renew<br />
+kubeadm会在<code>控制平面升级</code>时<code>自动</code>更新所有的证书</p>
+</blockquote>
+<h1 id="kube-proxy-工作模式切换">kube-proxy 工作模式切换</h1>
+<div><pre class="hljs"><code>1. 配置configmap
+kubectl edit configmap kube-proxy -n kube-system
+
+2. 修改mode
+    mode: <span class="hljs-string">"ipvs"</span>
+3. 删除所有kube-proxy pods
+    kubectl get po -n kube-system
+    kubectl delete po -n kube-system &lt;pod-name&gt;
+4. 验证kube-proxy pod 是否采用了 ipvs
+    kubectl logs [kube-proxy pod] -n kube-system| grep <span class="hljs-string">"Using ipvs Proxier"</span></code></pre></div>
+<p><img src="/_resources/672239b764b947f89f61c8e1bcc9ec10.png" /><br />
+<img src="/_resources/e9a8c12ed2ae404180a92e4fc9fb0f75.png" /></p>
+<h1 id="问题处理">问题处理</h1>
+<h2 id="found-multiple-cri-endpoints-on-the-host">Found multiple CRI endpoints on the host</h2>
+<p><img src="/_resources/8f3d590aab9e41d7bd420342e1037575.png" /></p>
+<ul>
+<li>原因：当前使用的容器运行时，选择<code>docker + cri-dockered</code>，在通过<code>pull</code>获取镜像时被检测到多个<code>CRI</code>环境</li>
+<li>解决方式：通过追加<code>--cri-socket=unix:///var/run/cri-dockerd.sock</code> 即可解决<br />
+<img src="/_resources/fdb31cda6b494bda8de54776aedd5e3f.png" /></li>
+</ul>
+<h2 id="指定kubeadm拉取镜像的版本">指定kubeadm拉取镜像的版本</h2>
+<p><img src="/_resources/c9a4856f43af4889a3ed0ed36d8c3723.png" /></p>
+<ul>
+<li>问题：<code>kubeadm</code>默认会拉起该子版本最新的镜像，这不一定是我们需要的
+<ul>
+<li>例如当前为<code>1.29.2</code> 版本，它会拖取当前最新的最新的<code>1.29.5</code></li>
+</ul>
+</li>
+<li>解决方式：通过追加<code>--kubernetes-version vX.YY.Z</code>可以解决我们指定版本的需求<br />
+<img src="/_resources/4e7c14aebe7445878910eb67caef0c98.png" /></li>
+<li><a title="https://github.com/kubernetes/kubeadm/issues/978" href="https://github.com/kubernetes/kubeadm/issues/978">ref</a></li>
+</ul>
+</div>
+      </article>
+    </div>
+  </body>
+</html>
