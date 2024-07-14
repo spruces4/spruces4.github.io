@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<link rel="stylesheet" href="/_assets/main.css" />
+
+    <title>第九周作业 - Alfie Cheung</title>
+  <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /><style>.mermaid { background-color: white; width: 640px; }</style></head>
+  <body>
+    <div class="main">
+      <nav class="navigation">
+        <a href="/">Alfie Cheung</a>
+      </nav>
+      <article>
+        <header>
+          <h1 class="article-title">第九周作业</h1>
+          <div class="article-info">
+            <div>
+              <span
+                >Created At：<time datetime="1720959602542"
+                  >2024-07-14 20:20</time
+                ></span
+              >
+              <span
+                >Updated At：<time datetime="1720960370067"
+                  >2024-07-14 20:32</time
+                ></span
+              >
+            </div>
+            
+          </div>
+        </header>
+        <div class="article-content markdown-body"><nav class="table-of-contents"><ul><li><a href="#service">service</a><ul><li><a href="#什么是service">什么是service</a></li><li><a href="#暴露流量">暴露流量</a></li><li><a href="#负载均衡">负载均衡</a></li><li><a href="#服务发现">服务发现</a><ul><li><a href="#标签选择器">标签选择器</a></li><li><a href="#服务注册">服务注册</a></li></ul></li><li><a href="#资源规范">资源规范</a></li><li><a href="#层次说明">层次说明</a></li><li><a href="#service-工作">service 工作</a><ul><li><a href="#工作逻辑">工作逻辑</a></li><li><a href="#具体实现">具体实现</a></li><li><a href="#kube-proxy模型">kube-proxy模型</a><ul><li><a href="#userspace-mode">userspace mode</a></li><li><a href="#iptables-mode">iptables mode</a></li><li><a href="#ipvs-mode">ipvs mode</a></li></ul></li><li><a href="#clusterip">ClusterIP</a></li><li><a href="#nodeport">NodePort</a></li><li><a href="#loadbalancer">LoadBalancer</a></li><li><a href="#externalname">ExternalName</a></li></ul></li></ul></li><li><a href="#访问权限">访问权限</a><ul><li><a href="#创建token认证用户">创建token认证用户</a></li><li><a href="#创建身份凭据">创建身份凭据</a></li><li><a href="#token用户对namespace内pods具有查看权限">token用户对namespace内pods具有查看权限</a></li></ul></li><li><a href="#ingress">ingress</a><ul><li><a href="#初始化配置">初始化配置</a><ul><li><a href="#demoapp-v10">demoapp-v10</a></li><li><a href="#demoapp-v11">demoapp-v11</a></li></ul></li><li><a href="#基于url路由">基于URL路由</a><ul><li><a href="#案例">案例</a></li></ul></li><li><a href="#基于主机名路由">基于主机名路由</a><ul><li><a href="#案例-1">案例</a></li></ul></li><li><a href="#基于tls路由">基于TLS路由</a><ul><li><a href="#案例-2">案例</a></li></ul></li><li><a href="#rewrite">rewrite</a><ul><li><a href="#案例-3">案例</a></li></ul></li></ul></li></ul></nav><h1 id="service">service</h1>
+<h2 id="什么是service">什么是service</h2>
+<blockquote>
+<p>Pod存在生命周期，有销毁，有重建，<code>无法提供一个固定的访问接</code>口给客户端。并且为了同类的Pod都能够实现工作负载的价值，由此Service资源出现了，可以为一类Pod资源对象<code>提供一个固定的访问接口</code>和<code>负载均衡</code>，类似于阿里云的负载均衡或者是LVS的功能。</p>
+</blockquote>
+<blockquote>
+<p>但是要知道的是，Service和Pod对象的IP地址，一个是虚拟地址，一个是Pod IP地址，都仅<code>仅在集群内部可以进行访问</code>，无法接入集群外部流量。而为了解决该类问题的办法可以是在单一的节点上做<code>端口暴露</code>（hostPort）以及让Pod资源共享工作节点的网络名称空间（hostNetwork）以外，还可以使用<code>NodePort</code>或者是<code>LoadBalancer</code>类型的Service资源，或者是有7层负载均衡能力的<code>Ingress</code>资源。</p>
+</blockquote>
+<p><img src="/_resources/44f5fd8b8e174179a92b7a73df43787a.png" /></p>
+<p>Service的作用：</p>
+<ol>
+<li><code>暴露流量</code>： 让用户可以通过ServiceIP+ServicePort访问对应后端的Pod应用；</li>
+<li><code>负载均衡</code>： 提供基于4层的TCP/IP负载均衡，并不提供HTTP/HTTPS等负载均衡；</li>
+<li><code>服务发现</code>： 当发现新增Pod则自动加入至Service的后端，如发现Pod异常则自动从Service后端删除Pod的IP</li>
+</ol>
+<h2 id="暴露流量">暴露流量</h2>
+<ol>
+<li>
+<p><strong>ClusterIP</strong>: 这是默认的Service类型。它会创建一个虚拟IP地址,供集群内部的Pod访问。这种类型的Service只能在<code>集群内部访问</code>,无法从集群外部访问。</p>
+</li>
+<li>
+<p><strong>NodePort</strong>: 这种Service类型除了分配一个集群IP外,还会在每个Node的某个端口(非著名端口)上暴露服务。<code>集群外部可以通过访问任意Node的该端口来访问</code>服务。</p>
+</li>
+<li>
+<p><strong>LoadBalancer</strong>: 这是公有云环境下常用的Service类型。它不仅会分配集群IP,还会自动在公有云上<code>创建一个负载均衡器</code>,<code>暴露一个外部可访问的IP</code>地址。</p>
+</li>
+<li>
+<p><strong>ExternalName</strong>: 这种Service类型不会分配集群IP,而是<code>将服务映射到一个外部的DNS名称</code>。当集群内部访问这种Service时,会自动<code>解析到外部服务的地址</code>。</p>
+</li>
+<li>
+<p><strong>Headless Service</strong>: 这种Service不会分配集群IP,而是直接<code>将后端的Pod IP暴露给客户端</code>。适用于不需要负载均衡的场景,比<code>如DNS服务</code>等。</p>
+</li>
+</ol>
+<h2 id="负载均衡">负载均衡</h2>
+<ol>
+<li>
+<p><strong>Round-Robin 负载均衡</strong>:</p>
+<ul>
+<li>默认情况下,Service会使用Round-Robin的方式在后端的Pod之间分配流量。</li>
+<li>这种方式简单快捷,能够<code>将流量平均分配</code>到各个Pod上。</li>
+</ul>
+</li>
+<li>
+<p><strong>会话亲和性</strong>:</p>
+<ul>
+<li>Service支持基于客户端IP的会话亲和性。</li>
+<li>对于同一个客户端IP,后续的请求会被转发到之前处理该客户端请求的Pod上。</li>
+<li>适用于需要<code>保持会话状态</code>的应用程序。</li>
+</ul>
+</li>
+<li>
+<p><strong>健康检查与自动故障转移</strong>:</p>
+<ul>
+<li>Service会定期检查后端Pod的健康状态。</li>
+<li>当某个Pod发生故障时,Service会自动将其从负载均衡池中剔除,将流量转发到健康的Pod上。</li>
+<li>这可以<code>提高应用程序的可用性和容错性</code>。</li>
+</ul>
+</li>
+</ol>
+<h2 id="服务发现">服务发现</h2>
+<ul>
+<li>
+<p>说明</p>
+<ul>
+<li>Kubernetes 服务发现通过创建和管理服务（<code>Service</code>）资源来实现。服务资源定义了如何访问一组 Pod，这些 Pod 通常<code>执行相同的任务</code>。</li>
+<li>通过 <code>标签选择器</code> 筛选同一名称空间下的 Pod 资源 的	标签，完成 Pod 筛选。
+<ul>
+<li>例如，定义一个服务时，可以指定一个标签选择器，服务会自动发现并包含所有匹配该标签的 Pod。</li>
+</ul>
+</li>
+<li>Kubernetes <code>内部 DNS</code> 服务器会自动为每个服务创建一个 <code>DNS 条目</code>，使得其他 Pod 可以<code>通过服务名称进行访问</code>。</li>
+</ul>
+</li>
+<li>
+<p>本质</p>
+<ul>
+<li>当一个 <code>Service</code> 资源创建后，Kubernetes 会<code>自动创建</code>一个与<code>该 Service 同名</code>的 <code>Endpoint</code> 或 <code>EndpointSlice</code> 资源。</li>
+<li><code>Endpoint</code> 和 <code>EndpointSlice</code> 资源包含了服务所对应的 <code>Pod 的 IP 地址和端口信息</code>。</li>
+</ul>
+</li>
+</ul>
+
+				<div>
+					
+					<pre class="mermaid">sequenceDiagram
+    participant User
+    participant API_Server
+    participant Service
+    participant Controller
+    participant Endpoint
+
+    User -&gt;&gt; API_Server: 创建 Service 资源
+    API_Server -&gt;&gt; Service: 创建 Service 对象
+    API_Server -&gt;&gt; Controller: 通知创建 Service
+    Controller -&gt;&gt; API_Server: 创建与 Service 同名的 Endpoint 或 EndpointSlice
+    API_Server -&gt;&gt; Endpoint: 包含 Pod 的 IP 地址和端口信息
+    loop 监视 Pod 的变化
+        Controller -&gt;&gt; API_Server: 监视 Pod 的变化
+        API_Server -&gt;&gt; Controller: Pod 状态变化通知
+        Controller -&gt;&gt; Endpoint: 更新 Endpoint 或 EndpointSlice 资源
+    end
+</pre>
+				</div>
+			<h3 id="标签选择器">标签选择器</h3>
+<p><img src="/_resources/2ed6959657654552b6f6e5a54ff8e918.png" /></p>
+<blockquote>
+<p>标签：附加在资源对象上的<code>键值型元数据</code> (<code>pod.metadata.labels</code>)</p>
+</blockquote>
+<p>!!! tip  标签格式</p>
+<ul>
+<li>键标识：由“键前缀（可选）”和“键名”组成，格式为 <code>[key_prefix]/key_name</code>
+<ul>
+<li><code>键前缀 key_prefix</code>必须使用DNS域名格式</li>
+<li><code>键名 key_name</code>的命名格式：支持<code>字母</code>、<code>数字</code>、<code>连接号</code>、<code>下划线</code>和<code>点号</code>，且只能<code>以字母或数字开头</code>；最长63个字符；</li>
+</ul>
+</li>
+<li>“kubectl label”命令可管理对象的标签<br />
+!!!</li>
+</ul>
+<p>!!! tip  标签选择器 -- 支持类型</p>
+<ul>
+<li>基于<code>等值关系</code>
+<ul>
+<li><code>=</code>、<code>==</code>、<code>!=</code></li>
+</ul>
+</li>
+<li>基于<code>集合关系</code>
+<ul>
+<li>
+<p><code>in</code>: 表示<code>key</code> 在<code>value</code>集合里即命中</p>
+<ul>
+<li>KEY in (VALUE1, VALUE2, …)<div><pre class="hljs"><code><span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchExpressions:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">key:</span> <span class="hljs-string">app</span>
+        <span class="hljs-attr">operator:</span> <span class="hljs-string">In</span>
+        <span class="hljs-attr">values:</span> 
+          <span class="hljs-bullet">-</span> <span class="hljs-string">web</span>
+          <span class="hljs-bullet">-</span> <span class="hljs-string">db</span></code></pre></div>
+</li>
+</ul>
+</li>
+<li>
+<p><code>notin</code>: 表示<code>key</code> <strong>不</strong>在<code>value</code>集合里即命中</p>
+<ul>
+<li>KEY notin (VALUE1, VALUE2, …)<div><pre class="hljs"><code><span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchExpressions:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">key:</span> <span class="hljs-string">app</span>
+        <span class="hljs-attr">operator:</span> <span class="hljs-string">NotIn</span>
+        <span class="hljs-attr">values:</span> 
+          <span class="hljs-bullet">-</span> <span class="hljs-string">web</span>
+          <span class="hljs-bullet">-</span> <span class="hljs-string">db</span></code></pre></div>
+</li>
+</ul>
+</li>
+<li>
+<p><code>exists</code>: 筛选<code>存在某个标签</code>的资源，而不关心标签的具体值</p>
+<ul>
+<li>KEY1<div><pre class="hljs"><code><span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchExpressions:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">key:</span> <span class="hljs-string">app</span>
+        <span class="hljs-attr">operator:</span> <span class="hljs-string">Exists</span></code></pre></div>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!!</p>
+<h3 id="服务注册">服务注册</h3>
+<blockquote>
+<p><code>服务注册</code>是<code>服务发现</code>过程中的一个关键步骤。<br />
+<code>服务注册</code>可以被视为<code>服务发现</code>实现的一个方式或步骤。</p>
+</blockquote>
+<ul>
+<li>
+<p>本质</p>
+<ul>
+<li>控制器会不断 <code>监视 Pod 的变化</code>，确保 Endpoint 或 EndpointSlice 资源始终准确反映当前状态。</li>
+</ul>
+</li>
+<li>
+<p>工作方式</p>
+<ol>
+<li>
+<p>注册服务：</p>
+<ul>
+<li>当用户创建一个 Service 资源时，Kubernetes 自动注册该服务，即创建一个与服务同名的 Endpoint 或 EndpointSlice 资源。</li>
+<li>这些资源包含了所有匹配服务标签选择器的 Pod 的 IP 地址和端口信息。</li>
+</ul>
+</li>
+<li>
+<p>更新服务信息：</p>
+<ul>
+<li>控制器持续监视 Pod 的变化（如新增、删除、更新等），并相应地更新 Endpoint 或 EndpointSlice 资源。</li>
+<li>确保服务始终反映当前的实际 Pod 状态。</li>
+</ul>
+</li>
+<li>
+<p>服务发现机制：</p>
+<ul>
+<li>Kubernetes 内部的 DNS 服务器会为每个服务创建一个 DNS 条目，这使得其他 Pod 可以通过服务名称进行访问。</li>
+<li>当一个 Pod 需要访问某个服务时，DNS 解析服务名称并返回与该服务关联的 Pod 的 IP 地址，从而实现服务发现。</li>
+</ul>
+</li>
+</ol>
+</li>
+</ul>
+<h2 id="资源规范">资源规范</h2>
+<div><pre class="hljs"><code><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">metadata:</span>
+<span class="hljs-attr">name:</span> <span class="hljs-string">…</span>
+<span class="hljs-attr">namespace:</span> <span class="hljs-string">…</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-comment"># Service类型，默认为ClusterIP</span>
+  <span class="hljs-string">type</span> <span class="hljs-string">&lt;string&gt;</span>
+  <span class="hljs-comment"># 等值类型的标签选择器，内含“与”逻辑</span>
+  <span class="hljs-string">selector</span> <span class="hljs-string">&lt;map[string]string&gt;</span>
+  <span class="hljs-comment"># Service的端口对象列表</span>
+  <span class="hljs-string">ports：</span>
+  <span class="hljs-comment"># 端口名称</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">name</span> <span class="hljs-string">&lt;string&gt;</span>
+    <span class="hljs-comment"># 协议，目前仅支持TCP、UDP和SCTP，默认为TCP</span>
+    <span class="hljs-string">protocol</span> <span class="hljs-string">&lt;string&gt;</span>
+    <span class="hljs-comment"># Service的端口号</span>
+    <span class="hljs-string">port</span> <span class="hljs-string">&lt;integer&gt;</span>
+    <span class="hljs-comment"># 后端目标进程的端口号或名称，名称需由Pod规范定义</span>
+    <span class="hljs-string">targetPort</span> <span class="hljs-string">&lt;string&gt;</span>
+    <span class="hljs-comment"># 节点端口号，仅适用于NodePort和LoadBalancer类型</span>
+    <span class="hljs-string">nodePort</span> <span class="hljs-string">&lt;integer&gt;</span>
+  <span class="hljs-comment"># Service的集群IP，建议由系统自动分配</span>
+  <span class="hljs-string">clusterIP</span> <span class="hljs-string">&lt;string&gt;</span>
+  <span class="hljs-comment"># 外部流量策略处理方式</span>
+  <span class="hljs-comment"># Local表示由当前节点处理，Cluster表示向集群范围调度</span>
+  <span class="hljs-string">externalTrafficPolicy</span> <span class="hljs-string">&lt;string&gt;</span>
+  <span class="hljs-comment"># 外部负载均衡器使用的IP地址，仅适用于LoadBlancer</span>
+  <span class="hljs-string">loadBalancerIP</span> <span class="hljs-string">&lt;string&gt;</span>
+  <span class="hljs-comment"># 外部服务名称，该名称将作为Service的DNS CNAME值</span>
+  <span class="hljs-string">externalName</span> <span class="hljs-string">&lt;string&gt;</span></code></pre></div>
+<h2 id="层次说明">层次说明</h2>
+<blockquote>
+<p>负载均衡器入口：ClusterIP及相关的Service Port、NodePort<br />
+标签选择器：用于筛选Pod，并基于筛选出的Pod的IP生成后端端点列表</p>
+</blockquote>
+<p><img src="/_resources/f18d9f380c97430788a96929f806d8c9.png" /></p>
+<h2 id="service-工作">service 工作</h2>
+<h3 id="工作逻辑">工作逻辑</h3>
+<ol>
+<li>创建service任务下发</li>
+<li>service通过<code>label selector</code>获取匹配的pod</li>
+<li>将匹配的pod汇总到<code>endpoint</code>对象中（pod IP，端口信息）进行维护<br />
+<img src="/_resources/76858c0f07ef487289264475fd2f2b42.png" /></li>
+</ol>
+<h3 id="具体实现">具体实现</h3>
+<p>1.创建Service资源后，会分配一个随机的<code>ServiceIP</code>，返回给用户，然后写入<code>etcd</code>；<br />
+2.<code>endpoints-controller</code>负责生成和维护所有<code>endpoints</code>，它会监听<code>Service和Pod的状态</code>，当<code>Pod处于running且准备就绪时</code>，<code>endpoints-controller</code>会将Pod IP更新对应<code>Service的endpoints对象</code>中，然后写入<code>Etcd</code>；<br />
+3.<code>kube-proxy</code>通过<code>API-Server</code>监听<code>Service</code>，<code>Endpoints</code>的资源变动，一旦<code>Service或Endpoints</code>资源发生变化，<code>kube-proxy</code>会将最新的信息转换为对应的<code>iptables/ipvs</code>访问规则，而后在本地主机上执行；<br />
+4.当客户端访问Service时，会经由<code>iptables/ipvs</code>规则，路由到对应节点；</p>
+<blockquote>
+<p>service 创建 通过  label selector 选定 pod<br />
+endpoint 隐含创建 监听 service 和 pod状态, 记录IP端口信息<br />
+kube-proxy 监听 service和endpoint 状态，创建对应的 iptables/ipvs 路由规则</p>
+<p>client 访问 service  查询endpoint，通过 iptables/ipvs 规则最总到达pod, 资源创建信息均写入etcd</p>
+</blockquote>
+<p><img src="/_resources/3c91662047e84914acebe429aa04d809.png" /></p>
+<h3 id="kube-proxy模型">kube-proxy模型</h3>
+<blockquote>
+<p>kube-proxy 负责为 Service 实现了一种 <code>VIP</code>（虚拟 IP）的形式，而不是 <code>ExternalName</code> 的形式。<br />
+Kubernetes v1.0 版本，代理完全在 <code>userspace</code><br />
+Kubernetes v1.1 版本，新增了 <code>iptables</code> 代理 <code>1.2</code> 中设定为默认模式<br />
+Kubernetes v1.8.0-beta.0中，添加了<code>ipvs</code>代理 <code>1.11</code> 设为为默认模式<br />
+iptables/ipvs 被定位为 （TCP/UDP over IP）4层服务<br />
+Kubernetes v1.1 版本，新增了 Ingress API（beta 版)，引入7层 （HTTP）服务</p>
+</blockquote>
+<blockquote>
+<p>kube-proxy 这个组件始终监视着apiserver中有关Service的变动信息，获取任何一个与Service资源相关的变动状态，通过watch监视，一旦有Service资源相关的变动和创建，kube-proxy都要<code>转换为当前节点上的能够实现资源调度规则</code>。</p>
+</blockquote>
+<h4 id="userspace-mode">userspace mode</h4>
+<p><img src="/_resources/cd3420c400cc42be82c0d530ee54dc44.png" /></p>
+<blockquote>
+<p>当客户端Pod请求内核空间的<code>Service iptables</code>后，把请求转到给用户空间监听的<code>kube-proxy</code> 的端口，由<code>kube-proxy</code>来处理后，再由<code>kube-proxy</code>将请求转给内核空间的 <code>Service ip</code>，再由<code>Service iptalbes</code>根据请求转给各节点中的的<code>Service pod</code>。</p>
+</blockquote>
+<blockquote>
+<p>问题：<br />
+由客户端请求先进入内核空间的，又进去用户空间访问kube-proxy，由kube-proxy封装完成后再进去内核空间的iptables，再根据iptables的规则分发给各节点的用户空间的pod。这样流量从用户空间进出内核带来的性能损耗是不可接受的。在Kubernetes 1.1版本之前，userspace是默认的代理模型。</p>
+</blockquote>
+<h4 id="iptables-mode">iptables mode</h4>
+<p><img src="/_resources/6dc7b55c17cf46f690fdc215ede42b67.png" /></p>
+<blockquote>
+<p>kube-proxy为service后端的所有pod创建对应的iptables规则，当用户向serviceIP发送请求.<br />
+1.首先iptables会拦截用户请求<br />
+2.然后直接将请求调度到后端的Pod</p>
+</blockquote>
+<blockquote>
+<p>优化：<br />
+减少再调度过程中，内核空间和用户空间的多次切换。</p>
+</blockquote>
+<blockquote>
+<p>问题：<br />
+一个Service会<code>创建出大量的规则</code>，且<code>不支持更高级的调度算法</code>，当Pod不可用也无法重试。</p>
+</blockquote>
+<h4 id="ipvs-mode">ipvs mode</h4>
+<p><img src="/_resources/5ed58d1cce514dd6be7056a4ad291231.png" /></p>
+<blockquote>
+<p>客户端IP请求时到达内核空间时，根据ipvs的规则直接分发到各pod上。kube-proxy会监视Kubernetes Service对象和Endpoints，调用<code>netlink接口以相应地创建ipvs规则</code>并定期<code>与Kubernetes Service对象和Endpoints对象同步ipvs规则</code>，以确保ipvs状态与期望一致。</p>
+<p>ipvs为负载均衡算法提供了更多选项</p>
+<ul>
+<li>rr：轮询调度</li>
+<li>lc：最小连接数</li>
+<li>dh：目标哈希</li>
+<li>sh：源哈希</li>
+<li>sed：最短期望延迟</li>
+<li>nq：不排队调度</li>
+</ul>
+</blockquote>
+<blockquote>
+<p>优化：<br />
+提供了丰富的负载均衡调度算法，对service和endpoint的监视有助于同步规则减少故障。</p>
+</blockquote>
+<p>!!! warning 降级注意<br />
+ipvs模式假定在运行<code>kube-proxy</code>之前在节点上都已经<code>安装了IPVS内核模块</code>。当kube-proxy以<code>ipvs代理模式启动时</code>，kube-proxy将验证节点上是否安装了IPVS模块，如果<code>未安装则kube-proxy将回退到iptables代理模式</code>。<br />
+!!!</p>
+<h3 id="clusterip">ClusterIP</h3>
+<p><img src="/_resources/38f809cb92da400e8a9cfebb8c699c85.png" /></p>
+<blockquote>
+<p>通过<code>集群的内部IP暴露服务</code>，选择ServiceIP只能在集群内部访问。这也是默认的ServiceType.<br />
+<code>ClusterIP</code>: This is the <code>default ServiceType</code>. This makes the Service only reachable from within the cluster and allows applications within the cluster to communicate with each other. There is <code>no external access</code>.</p>
+</blockquote>
+<ul>
+<li>接入方式
+<blockquote>
+<p>支持Service_IP:Service_Port接入；<br />
+<code>serviceIP</code>即<code>clusterIP</code></p>
+</blockquote>
+</li>
+</ul>
+<p>!!! info  实例信息</p>
+<ul>
+<li>
+<p>命令执行</p>
+<blockquote>
+<p>kubectl create service clusterip NAME [--tcp=&lt;port&gt;:&lt;targetPort&gt;] [--dry-run=server|client|none] [options]</p>
+</blockquote>
+</li>
+<li>
+<p>案例</p>
+<blockquote>
+<p>创建一个名为<code>demoapp</code>的<code>ClusterIP</code>类型的service<br />
+标签过滤器选中 <code>app=demoapp</code> 的 pod<br />
+pod由<code>80(targetPort)/tcp</code>端口提供服务<br />
+<code>clusterIP</code>也从<code>80(port)</code> 端口提供服务</p>
+</blockquote>
+</li>
+</ul>
+<div><pre class="hljs"><code><span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-comment"># 类型标识，默认即为ClusterIP；</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">ClusterIP</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+  <span class="hljs-comment"># 端口名称标识</span>
+  <span class="hljs-attr">ports:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">http</span>
+    <span class="hljs-comment"># 协议，支持TCP、UDP和SCTP</span>
+    <span class="hljs-attr">protocol:</span> <span class="hljs-string">TCP</span>
+    <span class="hljs-comment"># Service的端口号</span>
+    <span class="hljs-attr">port:</span> <span class="hljs-number">80</span>
+    <span class="hljs-comment"># 目标端口号，即后端端点提供服务的监听端口号</span>
+    <span class="hljs-attr">targetPort:</span> <span class="hljs-number">80</span></code></pre></div>
+<p>!!!</p>
+<h3 id="nodeport">NodePort</h3>
+<p><img src="/_resources/d74f8514b8c24c56b2cd29eda3de8c85.png" /></p>
+<blockquote>
+<p>NodePort类型是对ClusterIP类型Service资源的扩展。它通过每个节点上的IP和端口接入集群外部流量，并分发给后端的Pod处理和响应。因此通过<code>&lt;节点IP&gt;:&lt;节点端口&gt;</code>,可以从集群外部访问服务。<br />
+<code>NodePort</code>: This allows the external traffic to access the Service by <code>opening a specific port</code> on all the nodes. Any traffic that is sent to this Port is then forwarded to the Service.</p>
+</blockquote>
+<ul>
+<li>接入方式
+<blockquote>
+<p>支持Node_IP:Node_Port接入，同时支持ClusterIP；</p>
+</blockquote>
+</li>
+</ul>
+<p>!!! info  实例信息</p>
+<ul>
+<li>
+<p>命令执行</p>
+<blockquote>
+<p>kubectl create service nodeport NAME [--tcp=port:targetPort] [--dry-run=server|client|none] [options]</p>
+</blockquote>
+</li>
+<li>
+<p>案例</p>
+</li>
+</ul>
+<blockquote>
+<p>创建一个<code>demoapp</code>的<code>nodePort</code>类型的service<br />
+通过<code>app:demoapp</code> 进行标签选择<br />
+在<code>node</code>上使用<code>30080</code>端口提供服务映射到<code>cluster</code>的80端口，到<code>pod</code>上的<code>80</code>端口<br />
+对于<code>nodePort</code>仅能使用<code>30000</code>以上的端口<br />
+终端用户通过访问<code>node</code>的30080端口进行请求</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-comment"># 必须明确给出Service类型</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">NodePort</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+  <span class="hljs-attr">ports:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">http</span>
+    <span class="hljs-attr">protocol:</span> <span class="hljs-string">TCP</span>
+    <span class="hljs-attr">port:</span> <span class="hljs-number">80</span>
+    <span class="hljs-attr">targetPort:</span> <span class="hljs-number">80</span>
+    <span class="hljs-comment"># 可选，为避免冲突，建议由系统动态分配</span>
+    <span class="hljs-attr">nodePort:</span> <span class="hljs-number">30080</span> </code></pre></div>
+<p>!!!</p>
+<h3 id="loadbalancer">LoadBalancer</h3>
+<p><img src="/_resources/abd0c218bc6f4fc18bf22e075c029aba.png" /></p>
+<blockquote>
+<p>依赖云厂商，需要通过<code>云厂商调用API接口</code>创建软件负载均衡将服务暴露到集群外部。当创建<code>LoadBalance</code>类型的<code>Service对象</code>时，它会在集群上自动创建一个<code>NodePort</code>类型的<code>Service</code>。集群外部的请求流量会先路由至该负载均衡，并由该负载均衡调度至各个节点的<code>NodePort</code>。<br />
+<code>LoadBalancer</code>: This ServiceType exposes the Services externally using the <code>cloud provider’s load balancer</code>. Traffic from the external load balancer is directed at the backend Pods. The cloud provider decides how it is load-balanced.</p>
+</blockquote>
+<blockquote>
+<p>NodePort存在着几个方面的问题<br />
+非知名端口、私网IP地址、节点故障转移、节点间负载均衡、识别能适配到某Service的Local流量策略的节点等<br />
+外置的Cloud Load Balancer可以解决以上诸问题<br />
+<img src="/_resources/5649e2e4862b4fb6a5e5e2c5a3db8bf5.png" /></p>
+</blockquote>
+<ul>
+<li>接入方式
+<blockquote>
+<p>支持通过外部的LoadBalancer的LB_IP:LB_Port接入，同时支持NodePort和ClusterIP；</p>
+</blockquote>
+<ul>
+<li><code>LoadBalancer</code>需与相关的NodePort的Service生命周期联动
+<ul>
+<li><code>LoadBalancer</code>应该是由软件定义</li>
+<li>Kubernetes需要同<code>LoadBalancer</code>所属的管理API联动</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>!!! info  实例信息</p>
+<ul>
+<li>
+<p>命令执行</p>
+<blockquote>
+<p>kubectl create service loadbalancer NAME [--tcp=port:targetPort] [--dry-run=server|client|none] [options]</p>
+</blockquote>
+</li>
+<li>
+<p>案例</p>
+</li>
+</ul>
+<blockquote>
+<p>创建一个名为<code>my-web-service</code>的<code>loadbalancer</code><br />
+对外服务的端口为80， <code>pod</code>的端口为<code>8080</code><br />
+pod需要具备的标签为<code>app:web-app</code></p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">my-web-service</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">LoadBalancer</span>
+  <span class="hljs-attr">ports:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">port:</span> <span class="hljs-number">80</span>
+    <span class="hljs-attr">targetPort:</span> <span class="hljs-number">8080</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">web-app</span></code></pre></div>
+<p>!!!</p>
+<h3 id="externalname">ExternalName</h3>
+<p><img src="/_resources/a998f711e0c24c2e9ef5e1cb9ab9d22e.png" /></p>
+<blockquote>
+<p>ExternalName: 此类型不是用来定义如何访问集群内服务的，而是把集群外部的某些服务以DNS CNAME方式映射到集群内，从而<code>让集群内的Pod资源能够访问外部服务的一种实现方式</code></p>
+</blockquote>
+<blockquote>
+<p><code>ExternalName</code>: This type of Service maps a Service to a DNS name by using the contents of the externalName field by returning a <code>CNAME record</code> with its value. No proxying of any kind is set up.</p>
+</blockquote>
+<ul>
+<li>说明
+<ul>
+<li>负责将集群外部的服务引入到集群中</li>
+<li>需要借助于ClusterDNS上的CNAME资源记录完成</li>
+<li>特殊类型，无需ClusterIP和NodePort</li>
+<li>无须定义标签选择器发现Pod对象</li>
+</ul>
+</li>
+</ul>
+<p>!!! info  实例信息</p>
+<ul>
+<li>
+<p>命令执行</p>
+<blockquote>
+<p>kubectl create service externalname NAME --external-name external.name [--dry-run=server|client|none] [options]</p>
+</blockquote>
+</li>
+<li>
+<p>场景</p>
+<ol>
+<li>应用程序需要访问集群外部的服务,但又不想直接对外部 URL 进行硬编码。</li>
+<li>可以使用 Service 提供一个稳定的内部域名,来访问外部服务。</li>
+<li>当外部服务的 URL 变更时,只需要更新 externalName 字段即可,应用程序无需修改。</li>
+</ol>
+</li>
+<li>
+<p>案例</p>
+</li>
+</ul>
+<blockquote>
+<p>创建名为<code>my-service</code>的<code>externalName</code> service<br />
+当 Kubernetes 集群内部的应用访问 <code>my-service</code> 这个 Service 时,它实际上会被解析到 <code>docs.alfie.com</code> 这个外部 DNS 名称,从而访问到集群外部的服务。<br />
+例如： kubectl exec -it my-app -- /bin/bash<br />
+curl <a title="http://my-service" href="http://my-service">http://my-service</a> --&gt; 访问的为 docs.alfie.com<br />
+或通dig 查看 <code> dig myservice.default.svc.cluster.local @10.96.0.10 +short  docs.alfie.com</code></p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">my-service</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">prod</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">ExternalName</span>
+  <span class="hljs-attr">externalName:</span> <span class="hljs-string">docs.alfie.com</span></code></pre></div>
+<p>!!!</p>
+<h1 id="访问权限">访问权限</h1>
+<h2 id="创建token认证用户">创建token认证用户</h2>
+<ol>
+<li>
+<p>创建<code>令牌认证文件</code><br />
+!!! abstract 认证文件<br />
+文件格式为CSV，每行定义一个用户:</p>
+<blockquote>
+<p>格式 :<br />
+token,user,uid,"group1,group2,group3"<br />
+&lt;用户组为可选字段&gt;</p>
+</blockquote>
+<blockquote>
+<p>token 生成方式参考:<br />
+echo "$(openssl rand -hex 3).$(openssl rand -hex 8)"</p>
+</blockquote>
+<div><pre class="hljs"><code>cat /etc/kubernetes/pki/token.csv
+fab5ec.0c682bef86c83ad9,alfie,100
+8f8340.89a0c3cd39acbd5d,leslie,101
+7a27bf.cdd7e425bac85e03,tom,102</code></pre></div>
+<p>!!!</p>
+</li>
+<li>
+<p><code>apiserver</code>开启<code>token</code>认证</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 编辑apiserver配置 (应先进行备份)</span>
+vim /etc/kubernetes/manifests/kube-apiserver.yaml
+
+<span class="hljs-comment"># 添加配置</span>
+spec:
+  containers:
+  - <span class="hljs-built_in">command</span>:
+    - --token-auth-file=/etc/kubernetes/pki/token.csv
+    ...</code></pre></div>
+</li>
+<li>
+<p><code>client</code>使用<code>toekn</code>认证</p>
+<div><pre class="hljs"><code>curl -k -H <span class="hljs-string">"Authorization: Bearer fab5ec.0c682bef86c83ad9"</span> -k \
+https<span class="hljs-punctuation">:</span><span class="hljs-comment">//API_SERVER:6443/api/v1/namespaces/default/pods/</span>
+
+<span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">"kind"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Status"</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"apiVersion"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"v1"</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"metadata"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span><span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"status"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Failure"</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"message"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"pods is forbidden: User \"alfie\" cannot list resource \"pods\" in API group \"\" in the namespace \"default\""</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"reason"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Forbidden"</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"details"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">"kind"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"pods"</span>
+  <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">"code"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">403</span>
+<span class="hljs-punctuation">}</span></code></pre></div>
+</li>
+</ol>
+<h2 id="创建身份凭据">创建身份凭据</h2>
+<ol>
+<li>
+<p>定义Cluster</p>
+<blockquote>
+<p>提供包括集群名称、API Server URL和信任的CA的证书相关的配置；clusters配置段中的各列表项名称需要惟一</p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 设置名称为 kube-demo 的 cluster 输出配置文件到 `$HOME/.kube/kubeusers.conf`</span>
+kubectl config set-cluster kube-demo \
+--embed-certs=<span class="hljs-literal">true</span>  \
+--kubeconfig=<span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf \
+--server=<span class="hljs-string">"https://API_SERVER:6443"</span> \
+--certificate-authority=/etc/kubernetes/pki/ca.crt</code></pre></div>
+</li>
+<li>
+<p>定义User</p>
+<blockquote>
+<p>添加身份凭据，使用静态令牌文件认证的客户端提供令牌令牌即可</p>
+</blockquote>
+<div><pre class="hljs"><code>LESLIE_TOKEN=<span class="hljs-string">'8f8340.89a0c3cd39acbd5d'</span>
+kubectl config set-credentials leslie \
+--token=<span class="hljs-string">"<span class="hljs-variable">$LESLIE_TOKEN</span>"</span> \
+--kubeconfig=<span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf</code></pre></div>
+</li>
+<li>
+<p>定义Context</p>
+<blockquote>
+<p>为用户<code>leslie</code>的身份凭据与<code>kube-demo</code>集群建立映射关系名称 <code>leslie@kube-demo</code></p>
+</blockquote>
+<div><pre class="hljs"><code>kubectl config set-context leslie@kube-demo \
+--user=leslie \
+--cluster=kube-demo \
+--kubeconfig=<span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf</code></pre></div>
+</li>
+<li>
+<p>设定Current-Context</p>
+<div><pre class="hljs"><code>kubectl config use-context leslie@kube-demo \
+--kubeconfig=<span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf</code></pre></div>
+</li>
+<li>
+<p>查询<code>current-context</code></p>
+<div><pre class="hljs"><code>kubectl config current-context --kubeconfig ~/.kube/kubeusers.conf </code></pre></div>
+</li>
+<li>
+<p>使用凭据访问</p>
+<div><pre class="hljs"><code>kubectl get pod \
+--context leslie@kube-demo \
+--kubeconfig <span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf</code></pre></div>
+</li>
+</ol>
+<h2 id="token用户对namespace内pods具有查看权限">token用户对<code>namespace</code>内<code>pods</code>具有查看权限</h2>
+<ol>
+<li>
+<p>创建role</p>
+<div><pre class="hljs"><code> <span class="hljs-string">kubectl</span> <span class="hljs-string">create</span> <span class="hljs-string">role</span> <span class="hljs-string">default-ns-pod-view</span> <span class="hljs-string">\</span>
+ <span class="hljs-string">--verb</span> <span class="hljs-string">list,watch</span> <span class="hljs-string">--resource=pods</span> <span class="hljs-string">\</span>
+ <span class="hljs-string">--namespace=default</span> <span class="hljs-string">--dry-run=client</span> <span class="hljs-string">-o</span> <span class="hljs-string">yaml</span>
+
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">rbac.authorization.k8s.io/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Role</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">creationTimestamp:</span> <span class="hljs-literal">null</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">default-ns-pod-view</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">default</span>
+<span class="hljs-attr">rules:</span>
+<span class="hljs-bullet">-</span> <span class="hljs-attr">apiGroups:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">""</span>
+  <span class="hljs-attr">resources:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">pods</span>
+  <span class="hljs-attr">verbs:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">list</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">watch</span></code></pre></div>
+</li>
+<li>
+<p>创建rolebinding</p>
+<div><pre class="hljs"><code><span class="hljs-string">kubectl</span> <span class="hljs-string">create</span> <span class="hljs-string">rolebinding</span> <span class="hljs-string">leslie@default-ns-pod-view</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--role</span> <span class="hljs-string">default-ns-pod-view</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--user</span> <span class="hljs-string">leslie</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--namespace</span> <span class="hljs-string">default</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--dry-run=client</span> <span class="hljs-string">-o</span> <span class="hljs-string">yaml</span>
+
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">rbac.authorization.k8s.io/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">RoleBinding</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">creationTimestamp:</span> <span class="hljs-literal">null</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">leslie@default-ns-pod-view</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">default</span>
+<span class="hljs-attr">roleRef:</span>
+  <span class="hljs-attr">apiGroup:</span> <span class="hljs-string">rbac.authorization.k8s.io</span>
+  <span class="hljs-attr">kind:</span> <span class="hljs-string">Role</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">default-ns-pod-view</span>
+<span class="hljs-attr">subjects:</span>
+<span class="hljs-bullet">-</span> <span class="hljs-attr">apiGroup:</span> <span class="hljs-string">rbac.authorization.k8s.io</span>
+  <span class="hljs-attr">kind:</span> <span class="hljs-string">User</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">leslie</span></code></pre></div>
+</li>
+<li>
+<p>验证权限</p>
+</li>
+</ol>
+<div><pre class="hljs"><code>kubectl get pod  --kubeconfig <span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf  
+kubectl get pod -A --kubeconfig <span class="hljs-variable">$HOME</span>/.kube/kubeusers.conf  </code></pre></div>
+<p><img src="/_resources/a5e5153a59ab464f86908c72f9a935c4.png" /></p>
+<h1 id="ingress">ingress</h1>
+<h2 id="初始化配置">初始化配置</h2>
+<h3 id="demoapp-v10">demoapp-v10</h3>
+<div><pre class="hljs"><code><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">apps/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">labels:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp-v10</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">replicas:</span> <span class="hljs-number">1</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchLabels:</span>
+      <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+      <span class="hljs-attr">version:</span> <span class="hljs-string">v1.0</span>
+  <span class="hljs-attr">strategy:</span> {}
+  <span class="hljs-attr">template:</span>
+    <span class="hljs-attr">metadata:</span>
+      <span class="hljs-attr">labels:</span>
+        <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+        <span class="hljs-attr">version:</span> <span class="hljs-string">v1.0</span>
+    <span class="hljs-attr">spec:</span>
+      <span class="hljs-attr">containers:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">image:</span> <span class="hljs-string">ikubernetes/demoapp:v1.0</span>
+        <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp</span>
+        <span class="hljs-attr">resources:</span> {}
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">labels:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp-v10</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">ports:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">http-80</span>
+    <span class="hljs-attr">port:</span> <span class="hljs-number">80</span>
+    <span class="hljs-attr">protocol:</span> <span class="hljs-string">TCP</span>
+    <span class="hljs-attr">targetPort:</span> <span class="hljs-number">80</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+    <span class="hljs-attr">version:</span> <span class="hljs-string">v1.0</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">ClusterIP</span></code></pre></div>
+<h3 id="demoapp-v11">demoapp-v11</h3>
+<div><pre class="hljs"><code><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">apps/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">labels:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp-v11</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">replicas:</span> <span class="hljs-number">1</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchLabels:</span>
+      <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+      <span class="hljs-attr">version:</span> <span class="hljs-string">v1.1</span>
+  <span class="hljs-attr">strategy:</span> {}
+  <span class="hljs-attr">template:</span>
+    <span class="hljs-attr">metadata:</span>
+      <span class="hljs-attr">labels:</span>
+        <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+        <span class="hljs-attr">version:</span> <span class="hljs-string">v1.1</span>
+    <span class="hljs-attr">spec:</span>
+      <span class="hljs-attr">containers:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">image:</span> <span class="hljs-string">ikubernetes/demoapp:v1.1</span>
+        <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp</span>
+        <span class="hljs-attr">resources:</span> {}
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">labels:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">demoapp-v11</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">ports:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">http-80</span>
+    <span class="hljs-attr">port:</span> <span class="hljs-number">80</span>
+    <span class="hljs-attr">protocol:</span> <span class="hljs-string">TCP</span>
+    <span class="hljs-attr">targetPort:</span> <span class="hljs-number">80</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">demoapp</span>
+    <span class="hljs-attr">version:</span> <span class="hljs-string">v1.1</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">ClusterIP</span></code></pre></div>
+<h2 id="基于url路由">基于URL路由</h2>
+<blockquote>
+<p>在同一个<code>FQDN</code>下通过<code>不同的URI</code>完成不同应用间的流量分发</p>
+</blockquote>
+<p><img src="/_resources/c5a4c32539cf472994752373a8f31ebd.png" /></p>
+<ul>
+<li><code>不需要</code>为每个应用配置专用的域名</li>
+<li>基于<code>单个虚拟主机</code>接收多个应用的流量</li>
+<li>常用于将流量分发至同<code>一个应用下的多个不同子应用</code>，同一个应用内的流量由调度算法分发至该应用的各后端端点</li>
+</ul>
+<h3 id="案例">案例</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 对于发往demoapp.alfie.com的请求，将“/v10”代理至service/demoapp10，将“/v11”代理至service/demoapp11</span>
+<span class="hljs-comment"># 此处的重写是将所有的请求都重写到 svc 的 `/` 路径下</span>
+
+<span class="hljs-comment">#&gt; 此处重写功能是 http://example.com/foo/bar --&gt; http://example.com/</span>
+
+kubectl create ingress demo \
+--rule=<span class="hljs-string">"demoapp.alfie.com/v10=demoapp-v10:80"</span> \
+--rule=<span class="hljs-string">"demoapp.alfie.com/v11=demoapp-v11:80"</span> \
+--class=nginx --annotation nginx.ingress.kubernetes.io/rewrite-target=<span class="hljs-string">"/"</span> \
+--dry-run=client -o yaml
+
+<span class="hljs-comment"># 查看创建的 demo ingress</span>
+kubectl describe ingress demo 
+
+Name:             demo
+Labels:           &lt;none&gt;
+Namespace:        default
+Address:          
+Ingress Class:    nginx
+Default backend:  &lt;default&gt;
+Rules:
+  Host               Path  Backends
+  ----               ----  --------
+  demoapp.alfie.com  
+                     /v10   demoapp-v10:80 (10.244.1.35:80)
+                     /v11   demoapp-v11:80 (10.244.2.16:80)
+Annotations:         nginx.ingress.kubernetes.io/rewrite-target: /
+Events:
+  Type    Reason  Age   From                      Message
+  ----    ------  ----  ----                      -------
+  Normal  Sync    5s    nginx-ingress-controller  Scheduled <span class="hljs-keyword">for</span> sync
+
+<span class="hljs-comment"># 修改本地hosts文件</span>
+tail -n 1 /etc/hosts
+192.168.100.50 demoapp.alfie.com
+
+<span class="hljs-comment"># 访问测试</span>
+curl demoapp.alfie.com/v11
+iKubernetes demoapp v1.1 !! ClientIP: 10.244.3.23, ServerName: demoapp-v11-5f64448cd5-8q72l, ServerIP: 10.244.2.16!
+
+curl demoapp.alfie.com/v10
+iKubernetes demoapp v1.0 !! ClientIP: 10.244.3.23, ServerName: demoapp-v10-7f44bbc8c5-rk826, ServerIP: 10.244.1.35!</code></pre></div>
+<h2 id="基于主机名路由">基于主机名路由</h2>
+<blockquote>
+<p>每个应用使用一个<code>专有的主机名</code>，并基于这些名称完成不同应用间的流量转发</p>
+</blockquote>
+<p><img src="/_resources/8e61eb6fc7434378ba2defb3358644c8.png" /></p>
+<ul>
+<li>每个FQDN对应于<code>Ingress Controller</code>上的一个虚拟主机的定义</li>
+<li>同一组内的应用的流量，由<code>Ingress Controller</code>根据调度算法完成请求调度</li>
+</ul>
+<h3 id="案例-2">案例</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 对demoapp10.alfie.com的请求代理至service/demoapp10，对demoapp11.alfie.com请求代理至 service/demoapp11</span>
+<span class="hljs-comment"># 此处的重写是将所有的请求都重写到 svc 的 `/` 路径下</span>
+
+<span class="hljs-comment">#&gt; 此处重写功能是 http://example.com/foo/bar --&gt; http://example.com/</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">create</span> <span class="hljs-string">ingress</span> <span class="hljs-string">name-demo</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--rule="demoappv10.alfie.com/*=demoapp-v10:80"</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--rule="demoappv11.alfie.com/*=demoapp-v11:80"</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--class=nginx</span> <span class="hljs-string">--dry-run=client</span> <span class="hljs-string">-o</span> <span class="hljs-string">yaml</span>
+
+<span class="hljs-comment"># 查看ingress</span>
+<span class="hljs-string">k</span> <span class="hljs-string">get</span> <span class="hljs-string">ingress</span>  <span class="hljs-string">name-demo</span> 
+<span class="hljs-string">NAME</span>        <span class="hljs-string">CLASS</span>   <span class="hljs-string">HOSTS</span>                                       <span class="hljs-string">ADDRESS</span>          <span class="hljs-string">PORTS</span>   <span class="hljs-string">AGE</span>
+<span class="hljs-string">name-demo</span>   <span class="hljs-string">nginx</span>   <span class="hljs-string">demoappv10.alfie.com,demoappv11.alfie.com</span>   <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span>   <span class="hljs-number">80</span>      <span class="hljs-string">40s</span>
+
+<span class="hljs-comment"># describe 查看 ingress</span>
+<span class="hljs-string">k</span> <span class="hljs-string">describe</span> <span class="hljs-string">ingress</span>  <span class="hljs-string">name-demo</span> 
+<span class="hljs-attr">Name:</span>             <span class="hljs-string">name-demo</span>
+<span class="hljs-attr">Labels:</span>           <span class="hljs-string">&lt;none&gt;</span>
+<span class="hljs-attr">Namespace:</span>        <span class="hljs-string">default</span>
+<span class="hljs-attr">Address:</span>          <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span>
+<span class="hljs-attr">Ingress Class:</span>    <span class="hljs-string">nginx</span>
+<span class="hljs-attr">Default backend:</span>  <span class="hljs-string">&lt;default&gt;</span>
+<span class="hljs-attr">Rules:</span>
+  <span class="hljs-string">Host</span>                  <span class="hljs-string">Path</span>  <span class="hljs-string">Backends</span>
+  <span class="hljs-string">----</span>                  <span class="hljs-string">----</span>  <span class="hljs-string">--------</span>
+  <span class="hljs-string">demoappv10.alfie.com</span>  
+                        <span class="hljs-string">/</span>   <span class="hljs-string">demoapp-v10:80</span> <span class="hljs-string">(10.244.1.35:80)</span>
+  <span class="hljs-string">demoappv11.alfie.com</span>  
+                        <span class="hljs-string">/</span>   <span class="hljs-string">demoapp-v11:80</span> <span class="hljs-string">(10.244.2.16:80)</span>
+<span class="hljs-attr">Annotations:</span>            <span class="hljs-string">&lt;none&gt;</span>
+<span class="hljs-attr">Events:</span>
+  <span class="hljs-string">Type</span>    <span class="hljs-string">Reason</span>  <span class="hljs-string">Age</span>                <span class="hljs-string">From</span>                      <span class="hljs-string">Message</span>
+  <span class="hljs-string">----</span>    <span class="hljs-string">------</span>  <span class="hljs-string">----</span>               <span class="hljs-string">----</span>                      <span class="hljs-string">-------</span>
+  <span class="hljs-string">Normal</span>  <span class="hljs-string">Sync</span>    <span class="hljs-string">50s</span> <span class="hljs-string">(x2</span> <span class="hljs-string">over</span> <span class="hljs-string">61s)</span>  <span class="hljs-string">nginx-ingress-controller</span>  <span class="hljs-string">Scheduled</span> <span class="hljs-string">for</span> <span class="hljs-string">sync</span>
+
+<span class="hljs-comment"># 对hosts文件进行修改</span>
+<span class="hljs-string">tail</span> <span class="hljs-string">-n</span> <span class="hljs-number">2</span> <span class="hljs-string">/etc/hosts</span>
+<span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span> <span class="hljs-string">demoappv10.alfie.com</span>
+<span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span> <span class="hljs-string">demoappv11.alfie.com</span>
+
+<span class="hljs-comment"># 测试验证</span>
+<span class="hljs-string">curl</span> <span class="hljs-string">demoappv10.alfie.com</span>
+<span class="hljs-string">iKubernetes</span> <span class="hljs-string">demoapp</span> <span class="hljs-string">v1.0</span> <span class="hljs-string">!!</span> <span class="hljs-attr">ClientIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.3</span><span class="hljs-number">.23</span><span class="hljs-string">,</span> <span class="hljs-attr">ServerName:</span> <span class="hljs-string">demoapp-v10-7f44bbc8c5-rk826,</span> <span class="hljs-attr">ServerIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.1</span><span class="hljs-number">.35</span><span class="hljs-string">!</span>
+
+<span class="hljs-string">curl</span> <span class="hljs-string">demoappv11.alfie.com</span>
+<span class="hljs-string">iKubernetes</span> <span class="hljs-string">demoapp</span> <span class="hljs-string">v1.1</span> <span class="hljs-string">!!</span> <span class="hljs-attr">ClientIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.3</span><span class="hljs-number">.23</span><span class="hljs-string">,</span> <span class="hljs-attr">ServerName:</span> <span class="hljs-string">demoapp-v11-5f64448cd5-8q72l,</span> <span class="hljs-attr">ServerIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.2</span><span class="hljs-number">.16</span><span class="hljs-string">!</span></code></pre></div>
+<h2 id="基于tls路由">基于TLS路由</h2>
+<blockquote>
+<p>Ingress也可以提供TLS支持，但仅限于<code>443/TCP</code>端口</p>
+</blockquote>
+<p><img src="/_resources/6671f6df818a4a62b826a943a8cea4d3.png" /></p>
+<ul>
+<li>若TLS配置<code>部分指定了不同的主机</code>，则它们会根据通过<code>SNI TLS</code>扩展指定的主机名
+<ul>
+<li>前提：Ingress控制器<code>支持SNI在同一端口上复用</code></li>
+</ul>
+</li>
+<li><code>TLS Secret</code>必须包含名为<code>tls.crt</code>和 的密钥<code>tls.key</code>，它们分别含有<code>TLS的证书和私钥</code></li>
+</ul>
+<h3 id="案例-3">案例</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 生成密钥</span>
+<span class="hljs-string">(umask</span> <span class="hljs-number">077</span><span class="hljs-string">;</span> <span class="hljs-string">openssl</span> <span class="hljs-string">genrsa</span> <span class="hljs-string">-out</span> <span class="hljs-string">alfie.key</span> <span class="hljs-number">2048</span><span class="hljs-string">)</span>
+
+<span class="hljs-comment"># 自签名证书</span>
+<span class="hljs-comment"># 注意此处证书CN 名称需要和 ingress使用访问的域名保持一致(demo.alfie.com)</span>
+<span class="hljs-string">openssl</span> <span class="hljs-string">req</span> <span class="hljs-string">-new</span> <span class="hljs-string">-x509</span> <span class="hljs-string">\</span>
+<span class="hljs-string">-key</span> <span class="hljs-string">alfie.key</span> <span class="hljs-string">-out</span> <span class="hljs-string">alfie.crt</span> <span class="hljs-string">\</span>
+<span class="hljs-string">-subj</span> <span class="hljs-string">/C=CN/ST=Guangzhou/L=Guangzhou/O=DevOps/CN=demo.alfie.com</span>
+
+<span class="hljs-comment"># 创建 tls 类型的 secret 资源</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">create</span> <span class="hljs-string">secret</span> <span class="hljs-string">tls</span> <span class="hljs-string">tls-alfie</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--cert=./alfie.crt</span> <span class="hljs-string">--key=./alfie.key</span>
+
+<span class="hljs-comment"># 创建ingress</span>
+<span class="hljs-comment"># 启用tls后，该域名下的所有URI默认为强制将http请求跳转至https</span>
+<span class="hljs-comment"># 关闭该功能：--annotation nginx.ingress.kubernetes.io/ssl-redirect=false</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">create</span> <span class="hljs-string">ingress</span> <span class="hljs-string">tls-demo</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--rule='demo.alfie.com/*=demoapp-v10:80,tls=tls-alfie'</span> <span class="hljs-string">\</span>
+<span class="hljs-string">--class=nginx</span> <span class="hljs-string">--dry-run=client</span> <span class="hljs-string">-o</span> <span class="hljs-string">yaml</span>
+
+<span class="hljs-comment"># 查看ingress</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">get</span> <span class="hljs-string">ingress</span> <span class="hljs-string">tls-demo</span> 
+<span class="hljs-string">NAME</span>       <span class="hljs-string">CLASS</span>   <span class="hljs-string">HOSTS</span>            <span class="hljs-string">ADDRESS</span>          <span class="hljs-string">PORTS</span>     <span class="hljs-string">AGE</span>
+<span class="hljs-string">tls-demo</span>   <span class="hljs-string">nginx</span>   <span class="hljs-string">demo.alfie.com</span>   <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span>   <span class="hljs-number">80</span><span class="hljs-string">,</span> <span class="hljs-number">443</span>   <span class="hljs-string">4m59s</span>
+
+<span class="hljs-comment"># describe 查看 ingress</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">describe</span> <span class="hljs-string">ingress</span> <span class="hljs-string">tls-demo</span> 
+<span class="hljs-attr">Name:</span>             <span class="hljs-string">tls-demo</span>
+<span class="hljs-attr">Labels:</span>           <span class="hljs-string">&lt;none&gt;</span>
+<span class="hljs-attr">Namespace:</span>        <span class="hljs-string">default</span>
+<span class="hljs-attr">Address:</span>          <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span>
+<span class="hljs-attr">Ingress Class:</span>    <span class="hljs-string">nginx</span>
+<span class="hljs-attr">Default backend:</span>  <span class="hljs-string">&lt;default&gt;</span>
+<span class="hljs-attr">TLS:</span>
+  <span class="hljs-string">tls-alfie</span> <span class="hljs-string">terminates</span> <span class="hljs-string">demo.alfie.com</span>
+<span class="hljs-attr">Rules:</span>
+  <span class="hljs-string">Host</span>            <span class="hljs-string">Path</span>  <span class="hljs-string">Backends</span>
+  <span class="hljs-string">----</span>            <span class="hljs-string">----</span>  <span class="hljs-string">--------</span>
+  <span class="hljs-string">demo.alfie.com</span>  
+                  <span class="hljs-string">/</span>   <span class="hljs-string">demoapp-v10:80</span> <span class="hljs-string">(10.244.1.35:80)</span>
+<span class="hljs-attr">Annotations:</span>      <span class="hljs-string">&lt;none&gt;</span>
+<span class="hljs-attr">Events:</span>
+  <span class="hljs-string">Type</span>    <span class="hljs-string">Reason</span>  <span class="hljs-string">Age</span>                    <span class="hljs-string">From</span>                      <span class="hljs-string">Message</span>
+  <span class="hljs-string">----</span>    <span class="hljs-string">------</span>  <span class="hljs-string">----</span>                   <span class="hljs-string">----</span>                      <span class="hljs-string">-------</span>
+  <span class="hljs-string">Normal</span>  <span class="hljs-string">Sync</span>    <span class="hljs-string">5m20s</span> <span class="hljs-string">(x2</span> <span class="hljs-string">over</span> <span class="hljs-string">5m22s)</span>  <span class="hljs-string">nginx-ingress-controller</span>  <span class="hljs-string">Scheduled</span> <span class="hljs-string">for</span> <span class="hljs-string">sync</span>
+
+<span class="hljs-comment"># 对hosts文件进行修改</span>
+<span class="hljs-string">tail</span> <span class="hljs-string">-n</span> <span class="hljs-number">1</span> <span class="hljs-string">/etc/hosts</span>
+<span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.50</span> <span class="hljs-string">demo.alfie.com</span>
+
+<span class="hljs-comment"># 访问测试</span>
+<span class="hljs-comment">## 跳过TLS验证</span>
+<span class="hljs-string">curl</span> <span class="hljs-string">-k</span>  <span class="hljs-string">https://demo.alfie.com</span> 
+<span class="hljs-string">iKubernetes</span> <span class="hljs-string">demoapp</span> <span class="hljs-string">v1.0</span> <span class="hljs-string">!!</span> <span class="hljs-attr">ClientIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.3</span><span class="hljs-number">.23</span><span class="hljs-string">,</span> <span class="hljs-attr">ServerName:</span> <span class="hljs-string">demoapp-v10-7f44bbc8c5-rk826,</span> <span class="hljs-attr">ServerIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.1</span><span class="hljs-number">.35</span><span class="hljs-string">!</span>
+
+<span class="hljs-comment">## 使用证书验证</span>
+<span class="hljs-string">curl</span> <span class="hljs-string">--cacert</span> <span class="hljs-string">alfie.crt</span> <span class="hljs-string">https://demo.alfie.com</span>
+<span class="hljs-string">iKubernetes</span> <span class="hljs-string">demoapp</span> <span class="hljs-string">v1.0</span> <span class="hljs-string">!!</span> <span class="hljs-attr">ClientIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.3</span><span class="hljs-number">.23</span><span class="hljs-string">,</span> <span class="hljs-attr">ServerName:</span> <span class="hljs-string">demoapp-v10-7f44bbc8c5-rk826,</span> <span class="hljs-attr">ServerIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.1</span><span class="hljs-number">.35</span><span class="hljs-string">!</span>
+
+<span class="hljs-comment">## 信任证书访问</span>
+<span class="hljs-string">cp</span> <span class="hljs-string">alfie.crt</span> <span class="hljs-string">/usr/local/share/ca-certificates/</span>
+<span class="hljs-string">update-ca-certificates</span> <span class="hljs-string">--verbose</span> <span class="hljs-string">--fresh</span>
+<span class="hljs-string">curl</span> <span class="hljs-string">https://demo.alfie.com</span>
+<span class="hljs-string">iKubernetes</span> <span class="hljs-string">demoapp</span> <span class="hljs-string">v1.0</span> <span class="hljs-string">!!</span> <span class="hljs-attr">ClientIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.3</span><span class="hljs-number">.23</span><span class="hljs-string">,</span> <span class="hljs-attr">ServerName:</span> <span class="hljs-string">demoapp-v10-7f44bbc8c5-rk826,</span> <span class="hljs-attr">ServerIP:</span> <span class="hljs-number">10.244</span><span class="hljs-number">.1</span><span class="hljs-number">.35</span><span class="hljs-string">!</span></code></pre></div>
+<h2 id="rewrite">rewrite</h2>
+<blockquote>
+<p>对于七层路由规则，使用<code>host-path</code>路由时，<code>path</code>作为一个抽象层无法也不需要与真实应用的<code>URL</code>一一对应<br />
+因此就有机会需要将用户请求的<code>URL</code>进行重写，例如<code>清除path</code>，<code>传递path</code>后续参数</p>
+</blockquote>
+<h3 id="案例-4">案例</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 传递后续参数给service</span>
+<span class="hljs-comment"># 此处我们对 `demoapp.alfie.com` 末尾的参数进行捕获，将/结尾后的内容作为也进行捕获</span>
+<span class="hljs-comment"># 通过`annotation`书写rewrite规则，通过标识符引用将$2 (即/后的内容) 传递给 svc，让其继续进行解析</span>
+
+kubectl create ingress rewrite-demo \
+--rule=<span class="hljs-string">'demoapp.alfie.com/v10(/|$)(.*)=demoapp-v10:80'</span> \
+--rule=<span class="hljs-string">'demoapp.alfie.com/v11(/|$)(.*)=demoapp-v11:80'</span> \
+--class=nginx --annotation nginx.ingress.kubernetes.io/rewrite-target=<span class="hljs-string">'/$2'</span>
+
+<span class="hljs-comment"># descripbe 查看 ingress</span>
+Name:             rewrite-demo
+Labels:           &lt;none&gt;
+Namespace:        default
+Address:          192.168.100.50
+Ingress Class:    nginx
+Default backend:  &lt;default&gt;
+Rules:
+  Host               Path  Backends
+  ----               ----  --------
+  demoapp.alfie.com  
+                     /v10(/|$)(.*)   demoapp-v10:80 (10.244.1.35:80)
+                     /v11(/|$)(.*)   demoapp-v11:80 (10.244.2.16:80)
+Annotations:         nginx.ingress.kubernetes.io/rewrite-target: /<span class="hljs-variable">$2</span>
+Events:
+  Type    Reason  Age               From                      Message
+  ----    ------  ----              ----                      -------
+  Normal  Sync    5s (x2 over 36s)  nginx-ingress-controller  Scheduled <span class="hljs-keyword">for</span> sync
+
+<span class="hljs-comment"># 访问测试</span>
+curl demoapp.alfie.com/v10
+iKubernetes demoapp v1.0 !! ClientIP: 10.244.3.23, ServerName: demoapp-v10-7f44bbc8c5-rk826, ServerIP: 10.244.1.35!
+
+<span class="hljs-comment"># 测试第二参数</span>
+curl demoapp.alfie.com/v10/hostname
+ServerName: demoapp-v10-7f44bbc8c5-rk826</code></pre></div>
+</div>
+      </article>
+    </div>
+  <script src="/_markdown_plugin_assets/mermaid/mermaid.min.js"></script>
+<script src="/_markdown_plugin_assets/mermaid/mermaid_render.js"></script></body>
+</html>
