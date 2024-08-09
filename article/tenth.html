@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<link rel="stylesheet" href="/_assets/main.css" />
+
+    <title>第十周作业 - Alfie Cheung</title>
+  <link rel="stylesheet" href="/_markdown_plugin_assets/highlight.js/atom-one-light.css" /></head>
+  <body>
+    <div class="main">
+      <nav class="navigation">
+        <a href="/">Alfie Cheung</a>
+      </nav>
+      <article>
+        <header>
+          <h1 class="article-title">第十周作业</h1>
+          <div class="article-info">
+            <div>
+              <span
+                >Created At：<time datetime="1723213104916"
+                  >2024-08-09 22:18</time
+                ></span
+              >
+              <span
+                >Updated At：<time datetime="1723213305669"
+                  >2024-08-09 22:21</time
+                ></span
+              >
+            </div>
+            
+          </div>
+        </header>
+        <div class="article-content markdown-body"><h1 id="prometheus-部署">prometheus 部署</h1>
+<h2 id="包安装">包安装</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 查询支持的版本</span>
+apt-cache madison prometheus 
+prometheus | 2.31.2+ds1-1ubuntu1.22.04.2 | http://mirrors.aliyun.com/ubuntu jammy-security/universe amd64 Packages
+prometheus | 2.31.2+ds1-1ubuntu1.22.04.2 | http://mirrors.aliyun.com/ubuntu jammy-updates/universe amd64 Packages
+prometheus | 2.31.2+ds1-1ubuntu1.22.04.2 | http://cn.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages
+prometheus | 2.31.2+ds1-1ubuntu1.22.04.2 | http://cn.archive.ubuntu.com/ubuntu jammy-security/universe amd64 Packages
+prometheus | 2.31.2+ds1-1ubuntu1 | http://mirrors.aliyun.com/ubuntu jammy/universe amd64 Packages
+prometheus | 2.31.2+ds1-1ubuntu1 | http://cn.archive.ubuntu.com/ubuntu jammy/universe amd64 Packages
+
+<span class="hljs-comment"># 安装指定版本</span>
+apt install prometheus=2.31.2+ds1-1ubuntu1.22.04.2
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl start prometheus.service
+
+<span class="hljs-comment"># 检查服务</span>
+ss -tulnp | grep -i 9090
+tcp   LISTEN 0      4096               *:9090            *:*    users:((<span class="hljs-string">"prometheus"</span>,pid=2619,fd=4))   </code></pre></div>
+<h3 id="默认service文件">默认service文件</h3>
+<div><pre class="hljs"><code><span class="hljs-section">[Unit]</span> 
+<span class="hljs-attr">Description</span>=Monitoring system and time series database
+<span class="hljs-attr">Documentation</span>=https://prometheus.io/docs/introduction/overview/ man:prometheus(<span class="hljs-number">1</span>)
+<span class="hljs-attr">After</span>=time-sync.target
+
+<span class="hljs-section">[Service]</span>
+<span class="hljs-attr">Restart</span>=<span class="hljs-literal">on</span>-failure
+<span class="hljs-attr">User</span>=prometheus
+<span class="hljs-attr">EnvironmentFile</span>=/etc/default/prometheus
+<span class="hljs-attr">ExecStart</span>=/usr/bin/prometheus <span class="hljs-variable">$ARGS</span>
+<span class="hljs-attr">ExecReload</span>=/bin/kill -HUP <span class="hljs-variable">$MAINPID</span>
+<span class="hljs-attr">TimeoutStopSec</span>=<span class="hljs-number">20</span>s
+<span class="hljs-attr">SendSIGKILL</span>=<span class="hljs-literal">no</span>
+
+<span class="hljs-comment"># systemd hardening-options</span>
+<span class="hljs-attr">AmbientCapabilities</span>=
+<span class="hljs-attr">CapabilityBoundingSet</span>=
+<span class="hljs-attr">DeviceAllow</span>=/dev/null rw
+<span class="hljs-attr">DevicePolicy</span>=strict
+<span class="hljs-attr">LimitMEMLOCK</span>=<span class="hljs-number">0</span>
+<span class="hljs-attr">LimitNOFILE</span>=<span class="hljs-number">8192</span>
+<span class="hljs-attr">LockPersonality</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">MemoryDenyWriteExecute</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">NoNewPrivileges</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">PrivateDevices</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">PrivateTmp</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">PrivateUsers</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">ProtectControlGroups</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">ProtectHome</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">ProtectKernelModules</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">ProtectKernelTunables</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">ProtectSystem</span>=full
+<span class="hljs-attr">RemoveIPC</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">RestrictNamespaces</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">RestrictRealtime</span>=<span class="hljs-literal">true</span>
+<span class="hljs-attr">SystemCallArchitectures</span>=native
+<span class="hljs-section">[Install]</span>
+<span class="hljs-attr">WantedBy</span>=multi-user.target</code></pre></div>
+<h3 id="默认配置文件">默认配置文件</h3>
+<div><pre class="hljs"><code><span class="hljs-attr">global:</span>
+  <span class="hljs-attr">scrape_interval:</span>     <span class="hljs-string">15s</span> <span class="hljs-comment"># Set the scrape interval to every 15 seconds. Default is every 1 minute.</span>
+  <span class="hljs-attr">evaluation_interval:</span> <span class="hljs-string">15s</span> <span class="hljs-comment"># Evaluate rules every 15 seconds. The default is every 1 minute.</span>
+  <span class="hljs-attr">external_labels:</span>
+      <span class="hljs-attr">monitor:</span> <span class="hljs-string">'example'</span>
+<span class="hljs-attr">alerting:</span>
+  <span class="hljs-attr">alertmanagers:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">static_configs:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> [<span class="hljs-string">'localhost:9093'</span>]
+<span class="hljs-attr">rule_files:</span>
+<span class="hljs-attr">scrape_configs:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">'prometheus'</span>
+    <span class="hljs-attr">scrape_interval:</span> <span class="hljs-string">5s</span>
+    <span class="hljs-attr">scrape_timeout:</span> <span class="hljs-string">5s</span>
+    <span class="hljs-attr">static_configs:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> [<span class="hljs-string">'localhost:9090'</span>]
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">node</span>
+    <span class="hljs-attr">static_configs:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> [<span class="hljs-string">'localhost:9100'</span>]</code></pre></div>
+<p><img src="/_resources/9b25f0907b914631a75bffec34d90341.png" /></p>
+<h2 id="源代码">源代码</h2>
+<blockquote>
+<p>有更自由的版本安装选择，如最新的版本:<br />
+<a title="https://github.com/prometheus/prometheus/releases" href="https://github.com/prometheus/prometheus/releases">github release</a><br />
+<a title="https://prometheus.io/download/" href="https://prometheus.io/download/">prometheus donload page</a></p>
+</blockquote>
+<div><pre class="hljs"><code><span class="hljs-comment"># 下载软件包</span>
+v=2.53.1
+<span class="hljs-built_in">cd</span> /usr/<span class="hljs-built_in">local</span>
+wget https://github.com/prometheus/prometheus/releases/download/v<span class="hljs-variable">$v</span>/prometheus-<span class="hljs-variable">$v</span>.linux-amd64.tar.gz
+
+<span class="hljs-comment"># 解压包</span>
+tar -xvf prometheus-<span class="hljs-variable">$v</span>.linux-amd64.tar.gz
+ln -sv  prometheus-2.53.1.linux-amd64/ prometheus
+
+<span class="hljs-comment"># 追加路径</span>
+<span class="hljs-comment"># Add prometheus bin path</span>
+cat &gt; /etc/profile.d/prometheus.sh &lt;&lt;<span class="hljs-string">EOF
+PATH=/usr/local/prometheus:$PATH
+EOF</span>
+
+sourc /etc/profile.d/prometheus.sh
+
+<span class="hljs-comment"># 用户创建及权限</span>
+useradd -M -r prometheus
+
+<span class="hljs-comment"># 创建service文件</span>
+vim /etc/systemd/system/prometheus.service
+mkdir -p /usr/<span class="hljs-built_in">local</span>/prometheus/data <span class="hljs-comment"># 存储数据</span>
+chown -R prometheus:prometheus prometheus
+chown -R prometheus:prometheus prometheus/
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl daemon-reload
+systemctl start prometheus
+</code></pre></div>
+<h3 id="默认service文件-2">默认service文件</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># /etc/systemd/system/prometheus.service</span>
+
+[Unit]
+<span class="hljs-attribute">Description</span>=Monitoring<span class="hljs-built_in"> system </span><span class="hljs-keyword">and</span> time series database
+<span class="hljs-attribute">Documentation</span>=https://prometheus.io/docs/introduction/overview/
+<span class="hljs-attribute">After</span>=network-online.target
+
+[Service]
+<span class="hljs-attribute">Restart</span>=always
+<span class="hljs-attribute">User</span>=prometheus
+<span class="hljs-attribute">Group</span>=prometheus
+<span class="hljs-attribute">EnvironmentFile</span>=/usr/local/prometheus/prometheus.yml
+<span class="hljs-attribute">ExecStart</span>=/usr/local/prometheus/prometheus \
+  --config.<span class="hljs-attribute">file</span>=/usr/local/prometheus/prometheus.yml \
+  --storage.tsdb.<span class="hljs-attribute">path</span>=/usr/local/prometheus/data \
+  --storage.tsdb.retention.<span class="hljs-attribute">time</span>=60d \
+  --web.enable-lifecycle \
+  --web.<span class="hljs-attribute">listen-address</span>=:9090
+<span class="hljs-attribute">ExecReload</span>=/bin/kill -HUP <span class="hljs-variable">$MAINPID</span>
+<span class="hljs-attribute">TimeoutStopSec</span>=20s
+<span class="hljs-attribute">SendSIGKILL</span>=<span class="hljs-literal">no</span>
+<span class="hljs-attribute">LimitNOFILE</span>=8192
+
+[Install]
+<span class="hljs-attribute">WantedBy</span>=multi-user.target
+
+<span class="hljs-comment"># 说明</span>
+<span class="hljs-comment"># --config.file=/opt/prometheus/prometheus/prometheus.yml                 #主配置文件</span>
+<span class="hljs-comment"># --storage.tsdb.path=/opt/prometheus/prometheus/data                     #数据库存储目录</span>
+<span class="hljs-comment"># --web.console.libraries=/opt/prometheus/prometheus/console_libraries    #指定控制台库目录路径</span>
+<span class="hljs-comment"># --web.console.templates=/opt/prometheus/prometheus/consoles             #指定控制台模版目录路径</span>
+<span class="hljs-comment"># --storage.tsdb.retention=60d                                            #指明数据保留天数，默认15天</span>
+<span class="hljs-comment"># --web.enable-lifecycle                                                  #热加载</span>
+<span class="hljs-comment"># --web.listen-address=:9090                                              #默认监听端口</span></code></pre></div>
+<h3 id="默认配置文件-2">默认配置文件</h3>
+<div><pre class="hljs"><code><span class="hljs-attr">global:</span>
+  <span class="hljs-attr">scrape_interval:</span> <span class="hljs-string">15s</span> <span class="hljs-comment"># Set the scrape interval to every 15 seconds. Default is every 1 minute.</span>
+  <span class="hljs-attr">evaluation_interval:</span> <span class="hljs-string">15s</span> <span class="hljs-comment"># Evaluate rules every 15 seconds. The default is every 1 minute.</span>
+<span class="hljs-attr">alerting:</span>
+  <span class="hljs-attr">alertmanagers:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">static_configs:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span>
+<span class="hljs-attr">rule_files:</span>
+<span class="hljs-attr">scrape_configs:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">"prometheus"</span>
+    <span class="hljs-attr">static_configs:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> [<span class="hljs-string">"localhost:9090"</span>]</code></pre></div>
+<p><img src="/_resources/8ba9ec48af2846308dc4caafd24f9360.png" /></p>
+<h2 id="容器部署">容器部署</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 准备好prometheus.yml文件</span>
+<span class="hljs-comment"># eg:</span>
+global:
+  scrape_interval: 15s <span class="hljs-comment"># Set the scrape interval to every 15 seconds. Default is every 1 minute.</span>
+  evaluation_interval: 15s <span class="hljs-comment"># Evaluate rules every 15 seconds. The default is every 1 minute.</span>
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+rule_files:
+scrape_configs:
+  - job_name: <span class="hljs-string">"prometheus"</span>
+    static_configs:
+      - targets: [<span class="hljs-string">"localhost:9090"</span>]
+
+<span class="hljs-comment"># 创建容器</span>
+v=latest
+mkdir -p /data/prometheus
+chown -R nobody:nobody /data/prometheus/
+
+docker run --name prometheus -d -p 9090:9090 \
+-v /path/to/prometheus.yml:/etc/prometheus/prometheus.yml \
+-v /data/prometheus:/prometheus \
+-v /etc/localtime:/etc/localtime:ro \
+prom/prometheus:<span class="hljs-variable">$v</span>
+
+<span class="hljs-comment"># 查看容器运行</span>
+CONTAINER ID   IMAGE                    COMMAND                  CREATED          STATUS          PORTS                                       NAMES
+9a652b44f878   prom/prometheus:latest   <span class="hljs-string">"/bin/prometheus --c…"</span>   11 minutes ago   Up 11 minutes   0.0.0.0:9090-&gt;9090/tcp, :::9090-&gt;9090/tcp   prometheus</code></pre></div>
+<p><img src="/_resources/70241df257774192a307d526d332906c.png" /></p>
+<h2 id="故障排查">故障排查</h2>
+<blockquote>
+<p><code>/data/prometheus</code> 目录权限设定为<code>prometheus</code> 时候，运行报错<code>/prometheus/queries.active: permission denied"</code><br />
+<img src="/_resources/c980d8587b384ea5b7be2d9b512441c2.png" /></p>
+</blockquote>
+<blockquote>
+<p>解决方式</p>
+</blockquote>
+<ol>
+<li>进入<code>容器</code>使用<code>whomai</code>查询用户为<code>nobody</code><br />
+<img src="/_resources/55d7722124824b85b562bf9835844ca4.png" /></li>
+<li>修改 <code>/data/prometheus</code> 目录权限<div><pre class="hljs"><code>sudo mkdir -p /data/prometheus
+sudo chown -R 65534:65534 /data/prometheus
+OR
+sudo chown -R nobody:nobody /data/prometheus</code></pre></div>
+</li>
+</ol>
+<h2 id="k8s部署">K8S部署</h2>
+<div><pre class="hljs"><code><span class="hljs-comment"># 创建ns</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">create</span> <span class="hljs-string">namespace</span> <span class="hljs-string">prometheus</span>
+
+<span class="hljs-comment"># 创建配置文件 prometheus-config.yaml</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">apply</span> <span class="hljs-string">-f</span> <span class="hljs-string">prometheus-config.yaml</span> <span class="hljs-string">-n</span> <span class="hljs-string">prometheus</span>
+
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">ConfigMap</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus-server-conf</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">prometheus</span>
+<span class="hljs-attr">data:</span>
+  <span class="hljs-attr">prometheus.yml:</span> <span class="hljs-string">|
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+</span>
+<span class="hljs-comment"># 创建对应deployment prometheus-deployment.yaml</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">apply</span> <span class="hljs-string">-f</span> <span class="hljs-string">prometheus-deployment.yaml</span> <span class="hljs-string">-n</span> <span class="hljs-string">prometheus</span>
+
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">apps/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus-server</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">prometheus</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">replicas:</span> <span class="hljs-number">1</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchLabels:</span>
+      <span class="hljs-attr">app:</span> <span class="hljs-string">prometheus-server</span>
+  <span class="hljs-attr">template:</span>
+    <span class="hljs-attr">metadata:</span>
+      <span class="hljs-attr">labels:</span>
+        <span class="hljs-attr">app:</span> <span class="hljs-string">prometheus-server</span>
+    <span class="hljs-attr">spec:</span>
+      <span class="hljs-attr">containers:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus</span>
+          <span class="hljs-attr">image:</span> <span class="hljs-string">prom/prometheus</span>
+          <span class="hljs-attr">ports:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-attr">containerPort:</span> <span class="hljs-number">9090</span>
+          <span class="hljs-attr">volumeMounts:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">config-volume</span>
+              <span class="hljs-attr">mountPath:</span> <span class="hljs-string">/etc/prometheus</span>
+      <span class="hljs-attr">volumes:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">config-volume</span>
+          <span class="hljs-attr">configMap:</span>
+            <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus-server-conf</span>
+            <span class="hljs-attr">defaultMode:</span> <span class="hljs-number">420</span>
+
+<span class="hljs-comment"># 暴露服务 prometheus-service.yaml</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">apply</span> <span class="hljs-string">-f</span> <span class="hljs-string">prometheus-service.yaml</span> <span class="hljs-string">-n</span> <span class="hljs-string">prometheus</span>
+
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Service</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus-service</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">prometheus</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">prometheus-server</span>
+  <span class="hljs-attr">ports:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">protocol:</span> <span class="hljs-string">TCP</span>
+      <span class="hljs-attr">port:</span> <span class="hljs-number">9090</span>
+      <span class="hljs-attr">targetPort:</span> <span class="hljs-number">9090</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">LoadBalancer</span>
+
+<span class="hljs-comment"># 检查应用</span>
+<span class="hljs-string">kubectl</span> <span class="hljs-string">get</span> <span class="hljs-string">service</span> <span class="hljs-string">prometheus-service</span> <span class="hljs-string">-n</span> <span class="hljs-string">prometheus</span>
+<span class="hljs-string">NAME</span>                 <span class="hljs-string">TYPE</span>           <span class="hljs-string">CLUSTER-IP</span>      <span class="hljs-string">EXTERNAL-IP</span>      <span class="hljs-string">PORT(S)</span>          <span class="hljs-string">AGE</span>
+<span class="hljs-string">prometheus-service</span>   <span class="hljs-string">LoadBalancer</span>   <span class="hljs-number">10.99</span><span class="hljs-number">.133</span><span class="hljs-number">.211</span>   <span class="hljs-number">192.168</span><span class="hljs-number">.100</span><span class="hljs-number">.51</span>   <span class="hljs-number">9090</span><span class="hljs-string">:32033/TCP</span>   <span class="hljs-string">12m</span></code></pre></div>
+<p><img src="/_resources/4957a9f02e4948a383f56252307730b6.png" /></p>
+<h2 id="监控主机">监控主机</h2>
+<h3 id="二进制">二进制</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 源下载安装, 需要自行配置service文件</span>
+https://prometheus.io/download/<span class="hljs-comment">#node_exporter</span>
+
+v=1.8.2
+wget https://github.com/prometheus/node_exporter/releases/download/v<span class="hljs-variable">$v</span>/node_exporter-<span class="hljs-variable">$v</span>.linux-amd64.tar.gz
+
+<span class="hljs-comment">#解压软件包</span>
+tar -xvf node_exporter-1.8.2.linux-amd64.tar.gz  -C /opt/
+
+<span class="hljs-comment">#做软连接</span>
+<span class="hljs-built_in">cd</span> /opt
+mv node_exporter-<span class="hljs-variable">$v</span>.linux-amd64 node_exporter-<span class="hljs-variable">$v</span>
+ln -s node_exporter-<span class="hljs-variable">$v</span> node_exporter
+
+<span class="hljs-comment"># 修改权限</span>
+chown prometheus:prometheus /opt/node_exporter/node_exporter
+
+<span class="hljs-comment">#做systemd启动文件</span>
+cat &gt; /usr/lib/systemd/system/node_exporter.service &lt;&lt;<span class="hljs-string">EOF
+[Unit]
+Description=Prometheus node_exporter
+
+[Service]
+User=prometheus
+Group=prometheus
+ExecStart=/opt/node_exporter/node_exporter --log.level=error
+ExecStop=/usr/bin/killall node_exporter
+
+[Install]
+WantedBy=default.target
+EOF</span></code></pre></div>
+<h3 id="包安装-2">包安装</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 查询所有的 exporter</span>
+apt-cache search prometheus-.*-exporter
+
+<span class="hljs-comment"># 过滤 node 关键字</span>
+apt-cache search prometheus-.*-exporter | grep node
+
+<span class="hljs-comment"># 查询版本</span>
+apt-cache madison prometheus-node-exporter
+
+<span class="hljs-comment"># 安装</span>
+apt install prometheus-node-exporter=1.3.1-1ubuntu0.22.04.2
+
+<span class="hljs-comment"># 修改权限</span>
+chown prometheus:prometheus /usr/bin/prometheus-node-exporter
+chown prometheus:prometheus /etc/default/prometheus-node-exporter
+
+<span class="hljs-comment"># 启动服务</span>
+systemctl start  prometheus-node-exporter.service</code></pre></div>
+<h3 id="测试访问">测试访问</h3>
+<div><pre class="hljs"><code><span class="hljs-comment"># 检查端口状态</span>
+ss -tulnp | grep 9100
+tcp   LISTEN 0      4096               *:9100            *:*    users:((<span class="hljs-string">"prometheus-node"</span>,pid=62699,fd=3))
+
+<span class="hljs-comment"># 访问测试</span>
+curl -sq 127.0.0.1:9100/metrics | grep node_cpu_seconds_total
+<span class="hljs-comment"># HELP node_cpu_seconds_total Seconds the CPUs spent in each mode.</span>
+<span class="hljs-comment"># TYPE node_cpu_seconds_total counter</span>
+node_cpu_seconds_total{cpu=<span class="hljs-string">"0"</span>,mode=<span class="hljs-string">"idle"</span>} 47755.93
+node_cpu_seconds_total{cpu=<span class="hljs-string">"0"</span>,mode=<span class="hljs-string">"iowait"</span>} 6.04
+node_cpu_seconds_total{cpu=<span class="hljs-string">"0"</span>,mode=<span class="hljs-string">"irq"</span>} 0
+node_cpu_seconds_total{cpu=<span class="hljs-string">"0"</span>,mode=<span class="hljs-string">"nice"</span>} 0.12
+...</code></pre></div>
+<h3 id="监控配置">监控配置</h3>
+<div><pre class="hljs"><code><span class="hljs-attr">scrape_configs:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">"localhost-node"</span>
+    <span class="hljs-attr">static_configs:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> [<span class="hljs-string">"localhost:9100"</span>]</code></pre></div>
+<p><img src="/_resources/93554c46c52845948f6abf6f5b918606.png" /><br />
+<img src="/_resources/1e8f935f1ff04866aaf3c739c88eb751.png" /></p>
+<h1 id="容器监控">容器监控</h1>
+<h2 id="cadvisor">cAdvisor</h2>
+<blockquote>
+<p>CAdvisor是Google开源的一款用于展示和<code>分析容器运行状态</code>的可视化工具。通过在主机上运行CAdvisor用户可以轻松的获取到当前主机上<code>容器的运行统计信息</code>，并<code>以图表的形式</code>向用户展示。</p>
+</blockquote>
+<p>!!! warning 注意事项</p>
+<blockquote>
+<p>CAdvisor默认<code>只保存2分钟</code>的监控数据。</p>
+<p>用户可通过访问 <code>http://localhost:8080/metrics</code> ，获取其<code>暴露的metrices</code>。<br />
+<a title="https://github.com/google/cadvisor/blob/master/docs/storage/prometheus.md" href="https://github.com/google/cadvisor/blob/master/docs/storage/prometheus.md">metric explain</a><br />
+!!!</p>
+</blockquote>
+<ol>
+<li>
+<p>创建cadvisor容器</p>
+<div><pre class="hljs"><code><span class="hljs-comment"># 启动 cadvisor</span>
+docker run \
+--volume=/:/rootfs:ro \
+--volume=/var/run:/var/run:ro \
+--volume=/sys:/sys:ro \
+--volume=/var/lib/docker/:/var/lib/docker:ro \
+--volume=/dev/disk/:/dev/disk:ro \
+--publish=8080:8080 \
+--detach=<span class="hljs-literal">true</span> \
+--name=cadvisor \
+--privileged \
+--device=/dev/kmsg \
+gcr.io/cadvisor/cadvisor:latest  </code></pre></div>
+</li>
+<li>
+<p>配置<code>prometheus.yaml</code>中的采集任务</p>
+<div><pre class="hljs"><code><span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">cadvisor</span>
+  <span class="hljs-attr">static_configs:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">localhost:8080</span></code></pre></div>
+</li>
+<li>
+<p>查询cAdvisor数据<br />
+<img src="/_resources/ff681d35076a46bc972fcd638de3289e.png" /></p>
+<p><img src="/_resources/7e7f374814ce467c965583f9a685e69d.png" /></p>
+</li>
+</ol>
+<h2 id="参考">参考</h2>
+<ul>
+<li><a title="https://medium.com/@vinoji2005/install-prometheus-on-kubernetes-tutorial-and-example-6b3c800e7e1c" href="https://medium.com/@vinoji2005/install-prometheus-on-kubernetes-tutorial-and-example-6b3c800e7e1c">Install Prometheus on Kubernetes: Tutorial and Example</a></li>
+</ul>
+</div>
+      </article>
+    </div>
+  </body>
+</html>
